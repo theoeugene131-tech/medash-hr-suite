@@ -1,5 +1,7 @@
 "use client";
 
+import { CompanyAPI } from "@/lib/api";
+
 const REGIONS = {
   NG: {
     label: "Nigeria",
@@ -24,20 +26,28 @@ const REGIONS = {
   },
 };
 
-export default function CountrySettings({ state, update, showToast }) {
+export default function CountrySettings({ state, update, showToast, cloudMode = false }) {
   const code = REGIONS[state.countryCode] ? state.countryCode : "NG";
   const region = REGIONS[code];
 
-  function chooseCountry(nextCode) {
+  async function chooseCountry(nextCode) {
     const next = REGIONS[nextCode];
     if (!next) return;
+    if (cloudMode) {
+      try {
+        await CompanyAPI.updateRegion(nextCode);
+      } catch (error) {
+        if (showToast) showToast(error.message || "Could not save company region to the cloud.");
+        return;
+      }
+    }
     update((s) => {
       s.countryCode = nextCode;
       s.currency = next.currency;
       s.locale = next.locale;
       s.timezone = next.timezone;
     });
-    if (showToast) showToast(`Country settings saved: ${next.label}`);
+    if (showToast) showToast(`Company region saved: ${next.label}`);
   }
 
   return (
@@ -46,7 +56,7 @@ export default function CountrySettings({ state, update, showToast }) {
         <p style={{ color: "var(--coral)", fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>International setup</p>
         <h2 style={{ fontFamily: "Newsreader, serif", fontSize: 30, margin: "6px 0" }}>Country &amp; Region</h2>
         <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.7 }}>
-          Choose the country where this company primarily operates. This saves the company’s regional preferences; it does not automatically make every HR or payroll rule compliant with local law.
+          Choose the country where this company primarily operates. Cloud accounts save this choice to the company record; offline mode saves it on this device. It does not automatically make every HR or payroll rule compliant with local law.
         </p>
       </div>
 
@@ -76,7 +86,7 @@ export default function CountrySettings({ state, update, showToast }) {
       </div>
 
       <div style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.7 }}>
-        <strong style={{ color: "var(--paper)" }}>What this setting currently does:</strong> stores the selected company country, currency preference, locale, and time zone in this app’s saved state. The currency preference is not yet applied to every amount shown in the app, and changing the country does not change the existing Nigerian payroll calculations.
+        <strong style={{ color: "var(--paper)" }}>What this setting currently does:</strong> stores the selected company country, currency preference, locale, and time zone in this app’s saved state. Currency and date formatting are applied to shared display helpers. Some screens may still need review. UK/US payroll is blocked on the server until country-specific rules are implemented and tested.
       </div>
     </section>
   );
