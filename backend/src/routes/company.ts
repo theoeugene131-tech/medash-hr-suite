@@ -28,6 +28,7 @@ companyRouter.get("/", async (req: AuthedRequest, res) => {
     trialEndsAt: company.trialEndsAt || null,
     subscriptionPlan: company.subscriptionPlan || null,
     subscriptionActivatedAt: company.subscriptionActivatedAt || null,
+    subscriptionEndsAt: company.subscriptionEndsAt || null,
   });
 });
 
