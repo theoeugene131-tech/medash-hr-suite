@@ -13,6 +13,7 @@ const signupSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   password: z.string().min(8),
+  countryCode: z.enum(["NG", "GB", "US"]).optional().default("NG"),
 });
 
 // Creates a company + its first "owner" login. This replaces the old
@@ -22,13 +23,15 @@ const signupSchema = z.object({
 authRouter.post("/signup", async (req, res) => {
   const parsed = signupSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { companyName, name, email, password } = parsed.data;
+  const { companyName, name, password, countryCode } = parsed.data;
+  const email = parsed.data.email.trim().toLowerCase();
+  const region = ({ NG: { currency: "NGN", locale: "en-NG", timezone: "Africa/Lagos" }, GB: { currency: "GBP", locale: "en-GB", timezone: "Europe/London" }, US: { currency: "USD", locale: "en-US", timezone: "America/New_York" } } as const)[countryCode];
 
-  const existing = ((await db.table("users")) as any[]).find((u) => u.email === email);
+  const existing = ((await db.table("users")) as any[]).find((u) => String(u.email).toLowerCase() === email);
   if (existing) return res.status(409).json({ error: "An account with that email already exists" });
 
   const companyId = nanoid();
-  await db.insert("companies", { id: companyId, name: companyName, createdAt: new Date().toISOString() });
+  await db.insert("companies", { id: companyId, name: companyName.trim(), countryCode, ...region, createdAt: new Date().toISOString() });
 
   const user = {
     id: nanoid(),
@@ -51,9 +54,10 @@ const loginSchema = z.object({ email: z.string().email(), password: z.string() }
 authRouter.post("/login", async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { email, password } = parsed.data;
+  const { password } = parsed.data;
+  const email = parsed.data.email.trim().toLowerCase();
 
-  const user = ((await db.table("users")) as any[]).find((u) => u.email === email);
+  const user = ((await db.table("users")) as any[]).find((u) => String(u.email).toLowerCase() === email);
   if (!user || !(await verifyPassword(password, user.passwordHash))) {
     return res.status(401).json({ error: "Invalid email or password" });
   }
