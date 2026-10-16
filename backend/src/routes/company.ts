@@ -23,6 +23,11 @@ companyRouter.get("/", async (req: AuthedRequest, res) => {
     currency: company.currency || REGIONS[countryCode].currency,
     locale: company.locale || REGIONS[countryCode].locale,
     timezone: company.timezone || REGIONS[countryCode].timezone,
+    subscriptionStatus: company.subscriptionStatus || "active",
+    trialStartedAt: company.trialStartedAt || null,
+    trialEndsAt: company.trialEndsAt || null,
+    subscriptionPlan: company.subscriptionPlan || null,
+    subscriptionActivatedAt: company.subscriptionActivatedAt || null,
   });
 });
 
