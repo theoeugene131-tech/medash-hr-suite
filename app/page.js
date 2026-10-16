@@ -707,7 +707,7 @@ function Regulatory({state,update}){
             const allFiled=r.statuses.every(s=>s==='filed');
             const anyOver=r.statuses.some(s=>s==='overdue');
             return <tr key={r.period} style={{borderBottom:'1px solid rgba(32,21,38,0.07)'}}>
-              <td style={{padding:'12px 16px'}}><div style={{fontWeight:600}}>{periodLabel(r.period)}</div><div style={{fontSize:11,opacity:0.55}}>{r.lines} staff · {new Date(r.createdAt).toLocaleDateString()}</div></td>
+              <td style={{padding:'12px 16px'}}><div style={{fontWeight:600}}>{periodLabel(r.period)}</div><div style={{fontSize:11,opacity:0.55}}>{r.lines} staff · {formatDate(r.createdAt)}</div></td>
               <td style={{textAlign:'right',padding:'12px 10px',fontFamily:'IBM Plex Mono'}}>{money(r.totals.paye)}</td>
               <td style={{textAlign:'right',padding:'12px 10px',fontFamily:'IBM Plex Mono'}}>{money(r.pensionTotal)}</td>
               <td style={{textAlign:'right',padding:'12px 10px',fontFamily:'IBM Plex Mono'}}>{money(r.totals.nhf)}</td>
@@ -745,7 +745,7 @@ function printSchedule({companyName, period, lines}){
     .hdr{display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #222; padding-bottom:12px}
     @media print{ button{display:none} }
   </style></head><body>
-  <div class="hdr"><div><h1>${companyName || 'Company'}</h1><h2>Monthly Payment Schedule — ${periodLabel(period)} &nbsp;|&nbsp; Generated ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}</h2></div><div style="text-align:right; font-size:11px">Medash HR Suite — Payroll for Small Teams<br/>Developed by Next Level Global · +2348026892077</div></div>
+  <div class="hdr"><div><h1>${companyName || 'Company'}</h1><h2>Monthly Payment Schedule — ${periodLabel(period)} &nbsp;|&nbsp; Generated ${formatDate(new Date())} ${formatDate(new Date(),{hour:'2-digit',minute:'2-digit'})}</h2></div><div style="text-align:right; font-size:11px">Medash HR Suite — Payroll for Small Teams<br/>Developed by Next Level Global · +2348026892077</div></div>
   <table>
     <thead><tr><th>#</th><th>Staff Name</th><th>Role</th><th>Bank</th><th>Account No.</th><th style="text-align:right">Gross</th><th style="text-align:right">PAYE</th><th style="text-align:right">Pension (8%)</th><th style="text-align:right">NHF</th><th style="text-align:right">Net Pay</th><th>Signature</th></tr></thead>
     <tbody>
@@ -777,7 +777,7 @@ function printCertificate({companyName, cert, employee, training}){
     <div style="margin:20px 0; font-size:13px">This is to certify that</div>
     <div class="name">${employee.name}</div><div style="font-size:12px; opacity:0.7">${employee.role} · ${companyName||''}</div>
     <div style="margin:18px 0; font-size:13px">has successfully completed the training with score <span class="score">${cert.score||'—'}%</span></div>
-    <div style="font-size:11px; color:#666">Issued ${new Date(cert.issuedAt).toLocaleDateString()} · Certificate ID ${cert.id.slice(0,8).toUpperCase()} · Medash HR Suite by Next Level Global</div>
+    <div style="font-size:11px; color:#666">Issued ${formatDate(cert.issuedAt)} · Certificate ID ${cert.id.slice(0,8).toUpperCase()} · Medash HR Suite by Next Level Global</div>
     <div class="foot"><div>Training Coordinator<br/><br/>Signature / Date</div><div>CEO / HR Head<br/><br/>Signature / Date</div></div>
     <div style="margin-top:18px"><button onclick="window.print()" style="padding:10px 18px; background:#201526; color:#fff; border:none; border-radius:6px; cursor:pointer">Print / Save PDF</button> <button onclick="window.close()" style="padding:10px 18px">Close</button></div>
   </div></body></html>`);
@@ -888,7 +888,7 @@ function Training({state,update,setModal,showToast}){
           <div style={{fontSize:10,letterSpacing:0.1+'em',textTransform:'uppercase',opacity:0.55}}>{state.companyName||'Company'} · Certificate</div>
           <div style={{fontFamily:'Newsreader',fontStyle:'italic',fontSize:16,fontWeight:700,marginTop:4}}>{tr?tr.title:'Course'}</div>
           <div style={{fontSize:13,marginTop:6}}>Awarded to <b>{emp?emp.name:'—'}</b> · {emp?emp.role:''}</div>
-          <div style={{fontSize:11,opacity:0.6,marginTop:4}}>Issued {new Date(c.issuedAt).toLocaleDateString()} · ID {c.id.slice(0,8).toUpperCase()} · Score {c.score||'—'}%</div>
+          <div style={{fontSize:11,opacity:0.6,marginTop:4}}>Issued {formatDate(c.issuedAt)} · ID {c.id.slice(0,8).toUpperCase()} · Score {c.score||'—'}%</div>
           <button onClick={()=>printCertificate({companyName:state.companyName, cert:c, employee:emp, training:tr})} style={{marginTop:10,background:'#201526',color:'#fff',border:'none',padding:'7px 12px',borderRadius:6,fontSize:12,cursor:'pointer'}}>Print / Save PDF</button>
         </div>;
       })}
@@ -1065,7 +1065,7 @@ function History({state,expandedRun,setExpandedRun}){
       const total=r.lines.reduce((s,l)=>s+l.gross+l.pensionEmployer,0);
       const open=expandedRun===r.id;
       return <div key={r.id} className="run-row" style={{cursor:'pointer'}} onClick={()=>setExpandedRun(open?null:r.id)}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><div><div style={{fontFamily:'Newsreader',fontWeight:600,fontSize:16}}>{periodLabel(r.period)}</div><div style={{fontSize:12,opacity:0.6,marginTop:2}}>{r.lines.length} teammates · {new Date(r.createdAt).toLocaleDateString()}</div></div><div style={{fontFamily:'IBM Plex Mono',fontWeight:600}}>{money(total)}</div></div>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><div><div style={{fontFamily:'Newsreader',fontWeight:600,fontSize:16}}>{periodLabel(r.period)}</div><div style={{fontSize:12,opacity:0.6,marginTop:2}}>{r.lines.length} teammates · {formatDate(r.createdAt)}</div></div><div style={{fontFamily:'IBM Plex Mono',fontWeight:600}}>{money(total)}</div></div>
         {open && <div style={{marginTop:14,borderTop:'1px solid rgba(32,21,38,0.1)',paddingTop:12}}>
           <div style={{display:'grid',gridTemplateColumns:'1.2fr 1fr 1fr',gap:8,padding:'6px 0',fontSize:10,opacity:0.55,textTransform:'uppercase',letterSpacing:0.05+'em',borderBottom:'1px solid rgba(32,21,38,0.08)'}}><span>Staff</span><span>Account</span><span style={{textAlign:'right'}}>Net</span></div>
           {r.lines.map(l=><div key={l.employeeId} style={{display:'grid',gridTemplateColumns:'1.2fr 1fr 1fr',gap:8,alignItems:'center',fontSize:12.5,padding:'6px 0'}}><span>{l.name}</span><span style={{fontFamily:'IBM Plex Mono',fontSize:11}}>{l.bank||'—'} · {l.account||'—'}</span><span style={{fontFamily:'IBM Plex Mono',textAlign:'right'}}>{money(l.net)}</span></div>)}
@@ -1089,7 +1089,7 @@ function Compliance({state,update}){
         const bg=row.status==='filed'?'rgba(76,133,119,0.15)':row.status==='overdue'?'rgba(226,115,91,0.18)':'rgba(201,162,39,0.18)';
         const color=row.status==='filed'?'#2E5C51':row.status==='overdue'?'#8C3B28':'#8A6B0F';
         const label=row.status==='filed'?'Filed':row.status==='overdue'?'Overdue':'Pending';
-        return <tr key={i} style={{borderBottom:'1px solid rgba(32,21,38,0.07)'}}><td style={{padding:'12px 16px'}}>{periodLabel(row.period)}</td><td style={{padding:'12px 16px'}}>{row.what}</td><td style={{padding:'12px 16px'}}>{row.agency}</td><td style={{padding:'12px 16px',fontFamily:'IBM Plex Mono'}}>{new Date(row.due).toLocaleDateString()}</td><td style={{padding:'12px 16px'}}><span style={{fontFamily:'IBM Plex Mono',fontSize:10,padding:'4px 8px',borderRadius:20,background:bg,color}}>{label}</span></td><td style={{padding:'12px 16px'}}><button onClick={()=>update(s=>{if(!s.compliance[row.period]) s.compliance[row.period]={}; s.compliance[row.period][row.key]=!s.compliance[row.period][row.key];})} style={{background:row.status==='filed'?'var(--teal)':'none',color:row.status==='filed'?'#fff':'var(--ink)',border:'1px solid rgba(32,21,38,0.2)',borderRadius:20,padding:'5px 12px',fontSize:11.5,cursor:'pointer'}}>{row.status==='filed'?'Filed ✓':'Mark filed'}</button></td></tr>;
+        return <tr key={i} style={{borderBottom:'1px solid rgba(32,21,38,0.07)'}}><td style={{padding:'12px 16px'}}>{periodLabel(row.period)}</td><td style={{padding:'12px 16px'}}>{row.what}</td><td style={{padding:'12px 16px'}}>{row.agency}</td><td style={{padding:'12px 16px',fontFamily:'IBM Plex Mono'}}>{formatDate(row.due)}</td><td style={{padding:'12px 16px'}}><span style={{fontFamily:'IBM Plex Mono',fontSize:10,padding:'4px 8px',borderRadius:20,background:bg,color}}>{label}</span></td><td style={{padding:'12px 16px'}}><button onClick={()=>update(s=>{if(!s.compliance[row.period]) s.compliance[row.period]={}; s.compliance[row.period][row.key]=!s.compliance[row.period][row.key];})} style={{background:row.status==='filed'?'var(--teal)':'none',color:row.status==='filed'?'#fff':'var(--ink)',border:'1px solid rgba(32,21,38,0.2)',borderRadius:20,padding:'5px 12px',fontSize:11.5,cursor:'pointer'}}>{row.status==='filed'?'Filed ✓':'Mark filed'}</button></td></tr>;
       })}</tbody>
     </table>
     </div>
@@ -1102,7 +1102,7 @@ function Reviews({state,update,setModal}){
     <div className="panel-head"><div><h2>Performance reviews</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>{state.reviews.length} review{state.reviews.length!==1?'s':''} recorded</p></div><button className="btn btn-primary" onClick={()=>setModal({type:'review'})}>+ Add review</button></div>
     {list.length? list.map(r=>{
       const e=emp(r.employeeId);
-      return <div key={r.id} style={{background:'var(--paper)',color:'var(--ink)',borderRadius:8,padding:'16px 18px',marginBottom:10}}><div style={{display:'flex',justifyContent:'space-between'}}><span style={{fontWeight:600,fontSize:14}}>{e?e.name:'Former teammate'}{e?` — ${e.role}`:''}</span><span style={{fontSize:11.5,opacity:0.55}}>{new Date(r.date).toLocaleDateString()}</span></div><div style={{color:'var(--gold)',marginTop:4}}>{'★'.repeat(r.rating)}{'☆'.repeat(5-r.rating)}</div><div style={{fontSize:13,marginTop:8,opacity:0.85}}>{r.notes}</div></div>;
+      return <div key={r.id} style={{background:'var(--paper)',color:'var(--ink)',borderRadius:8,padding:'16px 18px',marginBottom:10}}><div style={{display:'flex',justifyContent:'space-between'}}><span style={{fontWeight:600,fontSize:14}}>{e?e.name:'Former teammate'}{e?` — ${e.role}`:''}</span><span style={{fontSize:11.5,opacity:0.55}}>{formatDate(r.date)}</span></div><div style={{color:'var(--gold)',marginTop:4}}>{'★'.repeat(r.rating)}{'☆'.repeat(5-r.rating)}</div><div style={{fontSize:13,marginTop:8,opacity:0.85}}>{r.notes}</div></div>;
     }): <div style={{color:'var(--muted)',textAlign:'center',padding:30}}>No reviews yet.</div>}
   </>);
 }
@@ -1163,7 +1163,7 @@ function MyProfile({state}){
     <div className="panel-head" style={{marginTop:26}}><div><h2>Payslip history</h2></div></div>
     {myRuns.length? myRuns.map(r=><div key={r.period} className="run-row" style={{cursor:'default',display:'flex',justifyContent:'space-between'}}><span style={{fontFamily:'Newsreader',fontWeight:600}}>{periodLabel(r.period)}</span><span style={{fontFamily:'IBM Plex Mono',fontWeight:600}}>{money(r.line.net)}</span></div>) : <div style={{color:'var(--muted)',textAlign:'center',padding:20}}>No payroll runs yet.</div>}
     <div className="panel-head" style={{marginTop:26}}><div><h2>My reviews</h2></div></div>
-    {myReviews.length? myReviews.map(r=><div key={r.id} style={{background:'var(--paper)',color:'var(--ink)',borderRadius:8,padding:'16px 18px',marginBottom:10}}><div style={{color:'var(--gold)'}}>{'★'.repeat(r.rating)}{'☆'.repeat(5-r.rating)}</div><div style={{fontSize:13,marginTop:8}}>{r.notes}</div><div style={{fontSize:11,opacity:0.55,marginTop:4}}>{new Date(r.date).toLocaleDateString()}</div></div>): <div style={{color:'var(--muted)',textAlign:'center',padding:20}}>No reviews yet.</div>}
+    {myReviews.length? myReviews.map(r=><div key={r.id} style={{background:'var(--paper)',color:'var(--ink)',borderRadius:8,padding:'16px 18px',marginBottom:10}}><div style={{color:'var(--gold)'}}>{'★'.repeat(r.rating)}{'☆'.repeat(5-r.rating)}</div><div style={{fontSize:13,marginTop:8}}>{r.notes}</div><div style={{fontSize:11,opacity:0.55,marginTop:4}}>{formatDate(r.date)}</div></div>): <div style={{color:'var(--muted)',textAlign:'center',padding:20}}>No reviews yet.</div>}
   </>);
 }
 
@@ -1369,7 +1369,7 @@ function Modal({modal,setModal,state,update,showToast}){
         {modal.type==='employee' && <>
           <div className="field"><label>Full name</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="e.g. Ada Obi"/></div>
           <div className="field"><label>Role</label><input value={form.role} onChange={e=>setForm({...form,role:e.target.value})} placeholder="e.g. Sales Associate"/></div>
-          <div className="field"><label>Gross monthly salary ({getCurrencySymbol(state.currency)})</label><input type="number" value={form.gross} onChange={e=>setForm({...form,gross:e.target.value})}/></div>
+          <div className="field"><label>Gross monthly salary ({getCurrencySymbol(state.currency || 'NGN')})</label><input type="number" value={form.gross} onChange={e=>setForm({...form,gross:e.target.value})}/></div>
           <div className="field-row"><div className="field"><label>Bank</label><input value={form.bank} onChange={e=>setForm({...form,bank:e.target.value})}/></div><div className="field"><label>Account</label><input value={form.account} onChange={e=>setForm({...form,account:e.target.value})}/></div></div>
           <div className="field-row"><div className="field"><label>Start date</label><input type="date" value={form.startDate} onChange={e=>setForm({...form,startDate:e.target.value})}/></div><div className="field"><label>DOB</label><input type="date" value={form.dob} onChange={e=>setForm({...form,dob:e.target.value})}/></div></div>
           <div style={{display:'flex',gap:10,marginTop:20}}><button className="btn btn-primary" onClick={async ()=>{
