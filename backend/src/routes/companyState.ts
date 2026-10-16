@@ -62,7 +62,13 @@ companyStateRouter.put("/", async (req: AuthedRequest, res) => {
       const oldRows = Array.isArray(existingState[field]) ? existingState[field] : [];
       const incomingRows = Array.isArray(incoming[field]) ? incoming[field] as any[] : [];
       const otherEmployees = oldRows.filter((item: any) => item.employeeId !== employeeId);
-      const ownRows = incomingRows.filter((item: any) => item.employeeId === employeeId);
+      let ownRows = incomingRows.filter((item: any) => item.employeeId === employeeId);
+      if (field === "leaves") {
+        ownRows = ownRows.map((item: any) => {
+          const previous = oldRows.find((old: any) => old.id === item.id && old.employeeId === employeeId);
+          return { ...item, status: previous ? previous.status : "pending" };
+        });
+      }
       nextState[field] = [...otherEmployees, ...ownRows];
     }
   } else {
