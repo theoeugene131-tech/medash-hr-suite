@@ -12,5 +12,9 @@ A new HR management and payroll application. This repository is a staging founda
 - Important: the currency preference is not yet applied to every amount shown. Nigerian payroll logic remains in the app; UK and US payroll calculations are not implemented. Do not use this build for UK/US payroll or treat it as production-ready.
 - Nigeria, UK and US support requires separate payroll rules and testing; currency display alone is not payroll compliance.
 
+- Prospect-facing landing page: `/for-businesses` (demo requests currently go through WhatsApp; no automated lead CRM or subscription checkout is wired up).
+- International client outreach and product-readiness checklist: `docs/INTERNATIONAL-GO-TO-MARKET.md`.
+- Currency formatting now uses the saved company currency/locale for shared money displays, and payroll is deliberately paused when the selected country is UK or US until those country rules are implemented and tested.
+
 ## Local development
 Run `npm install`, then `npm run dev`. Use `npm run build` to compile the API and Next.js application.
