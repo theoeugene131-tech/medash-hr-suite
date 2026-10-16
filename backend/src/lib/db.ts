@@ -1,8 +1,10 @@
 import { Pool } from "pg";
 const url = process.env.DATABASE_URL;
-if (process.env.NODE_ENV === "production" && !url) throw new Error("DATABASE_URL is required.");
 const pool = new Pool({ connectionString: url, ...(process.env.NODE_ENV === "production" ? { ssl: { rejectUnauthorized: false } } : {}) });
 export async function ensureSchema() {
+  if (process.env.NODE_ENV === "production" && !process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL is required.");
+  }
   await pool.query("CREATE TABLE IF NOT EXISTS records (table_name TEXT NOT NULL, id TEXT NOT NULL, company_id TEXT, data JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (table_name, id))");
   await pool.query("CREATE INDEX IF NOT EXISTS idx_records_table_company ON records (table_name, company_id)");
 }
