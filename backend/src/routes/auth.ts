@@ -85,13 +85,21 @@ authRouter.post("/invite-employee", requireAuth, requireAdmin, async (req: Authe
   if (!employee || employee.companyId !== req.auth!.companyId) {
     return res.status(404).json({ error: "Employee not found" });
   }
+  const inviteEmail = parsed.data.email.trim().toLowerCase();
+  const users = (await db.table("users")) as any[];
+  if (users.some((user) => String(user.email).toLowerCase() === inviteEmail)) {
+    return res.status(409).json({ error: "An account with that email already exists." });
+  }
+  if (users.some((user) => user.companyId === req.auth!.companyId && user.employeeId === employee.id)) {
+    return res.status(409).json({ error: "This employee already has a login account." });
+  }
 
   const inviteToken = crypto.randomBytes(24).toString("hex");
   await db.insert("invites", {
     id: nanoid(),
     companyId: req.auth!.companyId,
     employeeId: parsed.data.employeeId,
-    email: parsed.data.email,
+    email: inviteEmail,
     inviteToken,
     expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
     usedAt: null,
@@ -111,12 +119,21 @@ authRouter.post("/accept-invite", async (req, res) => {
   if (!invite || invite.usedAt || new Date(invite.expiresAt) < new Date()) {
     return res.status(400).json({ error: "Invite link is invalid or has expired" });
   }
+  const email = String(invite.email).trim().toLowerCase();
+  const existingUsers = (await db.table("users")) as any[];
+  if (existingUsers.some((existing) => String(existing.email).toLowerCase() === email)) {
+    return res.status(409).json({ error: "An account with this email already exists. Contact your company administrator." });
+  }
+  const employee = await db.find("employees", invite.employeeId);
+  if (!employee || employee.companyId !== invite.companyId) {
+    return res.status(400).json({ error: "The invited employee record is no longer available." });
+  }
 
   const user = {
     id: nanoid(),
     companyId: invite.companyId,
-    email: invite.email,
-    name: (await db.find("employees", invite.employeeId))?.name || invite.email,
+    email,
+    name: employee.name || email,
     passwordHash: await hashPassword(parsed.data.password),
     role: "employee" as const,
     employeeId: invite.employeeId,
