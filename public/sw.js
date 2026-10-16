@@ -1,4 +1,4 @@
-const CACHE = "roost-v1";
+const CACHE = "medash-hr-suite-v1";
 const ASSETS = ["/", "/manifest.json"];
 
 self.addEventListener("install", (e) => {
