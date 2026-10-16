@@ -359,8 +359,7 @@ export default function Page(){
       if(j.valid){ saveLicense(licenseKey,{plan:j.plan}); setLicenseOk(true); showToast('License activated ✓'); }
       else { showToast(j.reason||'Invalid license'); }
     }catch{
-      // offline: accept format-valid key
-      saveLicense(licenseKey,{plan:'offline'}); setLicenseOk(true); showToast('License saved (offline)');
+      showToast('Verification is unavailable. Please reconnect or contact support; activation has not been completed.');
     }
   }
   if(!licenseOk){
