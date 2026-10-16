@@ -19,9 +19,13 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
     const company = await db.find("companies", payload.companyId);
     if (!company) return res.status(403).json({ error: "Company account could not be found." });
     const isCompanyStatusRead = req.method === "GET" && req.path === "/";
+    const now = Date.now();
     const trialEndsAt = company.trialEndsAt ? new Date(company.trialEndsAt).getTime() : null;
-    if (!isCompanyStatusRead && company.subscriptionStatus !== "active" && trialEndsAt !== null && trialEndsAt < Date.now()) {
-      return res.status(402).json({ error: "Your 14-day Medash trial has ended. Contact Medash support to arrange manual subscription activation." });
+    const subscriptionEndsAt = company.subscriptionEndsAt ? new Date(company.subscriptionEndsAt).getTime() : null;
+    const trialExpired = company.subscriptionStatus !== "active" && trialEndsAt !== null && trialEndsAt < now;
+    const paidSubscriptionExpired = company.subscriptionStatus === "active" && subscriptionEndsAt !== null && subscriptionEndsAt < now;
+    if (!isCompanyStatusRead && (trialExpired || paidSubscriptionExpired)) {
+      return res.status(402).json({ error: trialExpired ? "Your 14-day Medash trial has ended. Contact Medash support to arrange manual subscription activation." : "Your Medash subscription has expired. Contact Medash support to renew access." });
     }
     return next();
   } catch (error) {
