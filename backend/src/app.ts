@@ -9,8 +9,8 @@ export const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.get("/health", (_req, res) => res.json({ ok: true, service: "roost-backend" }));
-app.get("/api/health", (_req, res) => res.json({ ok: true, service: "roost-backend" }));
+app.get("/health", (_req, res) => res.json({ ok: true, service: "medash-hr-suite-backend" }));
+app.get("/api/health", (_req, res) => res.json({ ok: true, service: "medash-hr-suite-backend" }));
 
 app.use("/api/auth", authRouter);
 app.use("/api/employees", employeesRouter);
