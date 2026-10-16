@@ -5,6 +5,7 @@ import { employeesRouter } from "./routes/employees.js";
 import { payrollRouter } from "./routes/payroll.js";
 import { companyRouter } from "./routes/company.js";
 import { adminRouter } from "./routes/admin.js";
+import { companyStateRouter } from "./routes/companyState.js";
 
 export const app = express();
 
@@ -17,6 +18,7 @@ app.get("/api/health", (_req, res) => res.json({ ok: true, service: "medash-hr-s
 app.use("/api/auth", authRouter);
 app.use("/api/employees", employeesRouter);
 app.use("/api/payroll", payrollRouter);
+app.use("/api/company/state", companyStateRouter);
 app.use("/api/company", companyRouter);
 app.use("/api/admin", adminRouter);
 
