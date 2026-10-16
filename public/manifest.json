@@ -1,0 +1,23 @@
+{
+  "name": "Medash HR Suite — Human Resources & Payroll",
+  "short_name": "Medash HR",
+  "description": "HR management for teams across Nigeria, the United Kingdom and the United States.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#241623",
+  "theme_color": "#241623",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
