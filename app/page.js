@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { loadState, saveState } from "@/lib/store";
 import { normalizeKey, isValidFormat, getStoredKey, saveLicense, clearLicense } from "@/lib/license";
 import { getApiBase, setApiBaseOverride, getToken, setSession, getSessionUser, clearSession, AuthAPI, EmployeesAPI, PayrollAPI } from "@/lib/api";
+import CountrySettings from "@/components/CountrySettings";
 
 const AVATAR_COLORS = ['#E2735B','#C9A227','#4C8577','#7D6BA6','#B3563F','#3E7C8A'];
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -24,12 +25,12 @@ const DOC_TYPES = [
 ];
 const TAB_LABELS = {
   overview:'Overview', team:'Team', docs:'Documents', regulatory:'Regulatory', training:'Training', leave:'Leave', attendance:'Attendance', org:'Org Chart', runpayroll:'Run payroll', history:'History',
-  compliance:'Compliance', reviews:'Reviews', hiring:'Hiring', reports:'Reports', myprofile:'My profile'
+  compliance:'Compliance', reviews:'Reviews', hiring:'Hiring', reports:'Reports', myprofile:'My profile', settings:'Country & Region'
 };
 function visibleTabs(role){
   if(role==='employee') return ['myprofile','training','leave','attendance'];
-  if(role==='admin') return ['overview','team','docs','regulatory','training','leave','attendance','org','runpayroll','history','compliance','reviews','hiring'];
-  return ['overview','team','docs','regulatory','training','leave','attendance','org','runpayroll','history','compliance','reviews','hiring','reports'];
+  if(role==='admin') return ['overview','team','docs','regulatory','training','leave','attendance','org','runpayroll','history','compliance','reviews','hiring','settings'];
+  return ['overview','team','docs','regulatory','training','leave','attendance','org','runpayroll','history','compliance','reviews','hiring','reports','settings'];
 }
 const LEAVE_TYPES = [
   {key:'annual', label:'Annual Leave', days:21, color:'#4C8577'},
@@ -102,6 +103,10 @@ function complianceStatus(state, period, item){
 function migrateState(s){
   let changed=false;
   if(!s.companyName){ s.companyName=''; changed=true; }
+  if(!s.countryCode){ s.countryCode='NG'; changed=true; }
+  if(!s.currency){ s.currency=s.countryCode==='GB'?'GBP':s.countryCode==='US'?'USD':'NGN'; changed=true; }
+  if(!s.locale){ s.locale=s.countryCode==='GB'?'en-GB':s.countryCode==='US'?'en-US':'en-NG'; changed=true; }
+  if(!s.timezone){ s.timezone=s.countryCode==='GB'?'Europe/London':s.countryCode==='US'?'America/New_York':'Africa/Lagos'; changed=true; }
   if(!s.trainings || s.trainings.length===0){ 
     const fresh=seedDemo(); s.trainings=fresh.trainings; s.enrollments=fresh.enrollments; s.certificates=fresh.certificates; changed=true;
   }
@@ -260,7 +265,7 @@ function seedDemo(){
     {id:'dept4', name:'Warehouse', head:employees[3].id, color:'#7D6BA6'},
   ];
   employees.forEach((e,i)=> e.department = orgUnits[i%orgUnits.length].id);
-  return {companyName:'', employees, runs:[], compliance:{}, reviews, candidates, trainings, enrollments, certificates, leaves, attendance, orgUnits, currentRole:'owner', viewingEmployeeId:null};
+  return {companyName:'', countryCode:'NG', currency:'NGN', locale:'en-NG', timezone:'Africa/Lagos', employees, runs:[], compliance:{}, reviews, candidates, trainings, enrollments, certificates, leaves, attendance, orgUnits, currentRole:'owner', viewingEmployeeId:null};
 }
 
 export default function Page(){
@@ -515,6 +520,7 @@ export default function Page(){
         {currentTab==='hiring' && <Hiring state={state} update={update} setModal={setModal} showToast={showToast} />}
         {currentTab==='reports' && <Reports state={state} />}
         {currentTab==='myprofile' && <MyProfile state={state} />}
+        {currentTab==='settings' && <CountrySettings state={state} update={update} showToast={showToast} />}
       </main>
       <footer style={{borderTop:'1px solid var(--line)',padding:'16px 40px',textAlign:'center',fontSize:12,color:'var(--muted)',background:'rgba(0,0,0,0.15)'}}>
         Developed by <span style={{color:'var(--paper)',fontWeight:600}}>Next Level Global</span> · Contact <a href="https://wa.me/2348026892077" target="_blank" rel="noopener noreferrer" style={{color:'#25D366',textDecoration:'none',fontWeight:600}}>WhatsApp +234 802 689 2077</a> · Medash HR Suite works offline
