@@ -334,14 +334,20 @@ export default function Page(){
     const urlKey=params.get('license');
     const demoBypass=params.get('demo')==='1';
     if(demoBypass){ setLicenseOk(true); setLicenseChecking(false); }
-    else if(urlKey && isValidFormat(urlKey)){ saveLicense(urlKey,{plan:'url'}); setLicenseKey(normalizeKey(urlKey)); setLicenseOk(true); setLicenseChecking(false); }
+    else if(urlKey && isValidFormat(urlKey)){
+      fetch('/api/verify',{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key:urlKey})})
+        .then(r=>r.json()).then(j=>{
+          if(j.valid){ saveLicense(urlKey,{plan:j.plan}); setLicenseOk(true); }
+          else { setLicenseKey(normalizeKey(urlKey)); setLicenseOk(false); }
+          setLicenseChecking(false);
+        }).catch(()=>{ setLicenseKey(normalizeKey(urlKey)); setLicenseOk(false); setLicenseChecking(false); });
+    }
     else {
       const stored=getStoredKey();
       if(stored && isValidFormat(stored)){
-        // verify with API (offline falls back to format check)
         fetch('/api/verify',{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key:stored})}).then(r=>r.json()).then(j=>{
           setLicenseOk(!!j.valid); setLicenseChecking(false); if(!j.valid) setLicenseKey(stored);
-        }).catch(()=>{ setLicenseOk(true); setLicenseChecking(false); });
+        }).catch(()=>{ setLicenseOk(false); setLicenseKey(stored); setLicenseChecking(false); });
       } else { if(stored) setLicenseKey(stored); setLicenseOk(false); setLicenseChecking(false); }
     }
     return ()=>{ window.removeEventListener('online',updateOnline); window.removeEventListener('offline',updateOnline); };
