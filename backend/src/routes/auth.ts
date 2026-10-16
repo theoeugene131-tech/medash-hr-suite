@@ -31,7 +31,9 @@ authRouter.post("/signup", async (req, res) => {
   if (existing) return res.status(409).json({ error: "An account with that email already exists" });
 
   const companyId = nanoid();
-  await db.insert("companies", { id: companyId, name: companyName.trim(), countryCode, ...region, createdAt: new Date().toISOString() });
+  const trialStartedAt = new Date();
+  const trialEndsAt = new Date(trialStartedAt.getTime() + 14 * 24 * 60 * 60 * 1000);
+  await db.insert("companies", { id: companyId, name: companyName.trim(), countryCode, ...region, subscriptionStatus: "trial", trialStartedAt: trialStartedAt.toISOString(), trialEndsAt: trialEndsAt.toISOString(), createdAt: trialStartedAt.toISOString() });
 
   const user = {
     id: nanoid(),
