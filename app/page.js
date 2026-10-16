@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { loadState, saveState } from "@/lib/store";
 import { normalizeKey, isValidFormat, getStoredKey, saveLicense, clearLicense } from "@/lib/license";
-import { getApiBase, setApiBaseOverride, getToken, setSession, getSessionUser, clearSession, AuthAPI, EmployeesAPI, PayrollAPI } from "@/lib/api";
+import { getApiBase, setApiBaseOverride, getToken, setSession, getSessionUser, clearSession, AuthAPI, EmployeesAPI, PayrollAPI, CompanyAPI } from "@/lib/api";
 import CountrySettings from "@/components/CountrySettings";
 import { formatMoney, formatDate, getCurrencySymbol } from "@/lib/region";
 
@@ -282,7 +282,7 @@ export default function Page(){
   const [licenseChecking,setLicenseChecking]=useState(true);
   const [apiUser,setApiUser]=useState(null);
   const [cloudLoading,setCloudLoading]=useState(false);
-  const [authForm,setAuthForm]=useState({mode:'login',companyName:'',name:'',email:'',password:''});
+  const [authForm,setAuthForm]=useState({mode:'login',companyName:'',name:'',email:'',password:'',countryCode:'NG'});
 
   function cloudOff(){
     try{
@@ -295,10 +295,11 @@ export default function Page(){
     if(me) setApiUser(me);
     setCloudLoading(true);
     try{
-      const [emps,runs]=await Promise.all([EmployeesAPI.list().catch(()=>null), PayrollAPI.list().catch(()=>null)]);
+      const [emps,runs,company]=await Promise.all([EmployeesAPI.list().catch(()=>null), PayrollAPI.list().catch(()=>null), CompanyAPI.get().catch(()=>null)]);
       setState(s=>{
         if(!s) return s;
         const ns=JSON.parse(JSON.stringify(s));
+        if(company && company.countryCode){ ns.countryCode=company.countryCode; ns.currency=company.currency; ns.locale=company.locale; ns.timezone=company.timezone; ns.companyName=company.name||ns.companyName; }
         if(Array.isArray(emps)){
           if(me && me.role==='employee'){
             ns.employees=emps.map((e,i)=>cloudEmployeeToLocal(e,i));
@@ -521,7 +522,7 @@ export default function Page(){
         {currentTab==='hiring' && <Hiring state={state} update={update} setModal={setModal} showToast={showToast} />}
         {currentTab==='reports' && <Reports state={state} />}
         {currentTab==='myprofile' && <MyProfile state={state} />}
-        {currentTab==='settings' && <CountrySettings state={state} update={update} showToast={showToast} />}
+        {currentTab==='settings' && <CountrySettings state={state} update={update} showToast={showToast} cloudMode={cloudMode} />}
       </main>
       <footer style={{borderTop:'1px solid var(--line)',padding:'16px 40px',textAlign:'center',fontSize:12,color:'var(--muted)',background:'rgba(0,0,0,0.15)'}}>
         Developed by <span style={{color:'var(--paper)',fontWeight:600}}>Next Level Global</span> · Contact <a href="https://wa.me/2348026892077" target="_blank" rel="noopener noreferrer" style={{color:'#25D366',textDecoration:'none',fontWeight:600}}>WhatsApp +234 802 689 2077</a> · Medash HR Suite works offline
@@ -1227,7 +1228,7 @@ function AuthScreen({authForm,setAuthForm,onAuth,showToast}){
     try{
       if(f.mode==='signup'){
         if(!f.companyName||!f.name||!f.email||f.password.length<8){ showToast('Fill company, name, valid email, password 8+ chars'); setBusy(false); return; }
-        const r=await AuthAPI.signup({companyName:f.companyName,name:f.name,email:f.email,password:f.password});
+        const r=await AuthAPI.signup({companyName:f.companyName,name:f.name,email:f.email,password:f.password,countryCode:f.countryCode||"NG"});
         setSession(r.token,r.user); showToast('Company created — welcome ✓'); onAuth();
       } else {
         if(!f.email||!f.password){ showToast('Enter email + password'); setBusy(false); return; }
@@ -1246,6 +1247,7 @@ function AuthScreen({authForm,setAuthForm,onAuth,showToast}){
         </div>
         <form onSubmit={submit}>
           {f.mode==='signup' && <><div className="field"><label>Company name</label><input value={f.companyName} onChange={e=>setAuthForm({...f,companyName:e.target.value})} placeholder="e.g. GreenField Ltd"/></div>
+          <div className="field"><label>Company country</label><select value={f.countryCode||"NG"} onChange={e=>setAuthForm({...f,countryCode:e.target.value})}><option value="NG">Nigeria</option><option value="GB">United Kingdom</option><option value="US">United States</option></select></div>
           <div className="field"><label>Your name</label><input value={f.name} onChange={e=>setAuthForm({...f,name:e.target.value})} placeholder="e.g. Ada Obi"/></div></>}
           <div className="field"><label>Email</label><input value={f.email} onChange={e=>setAuthForm({...f,email:e.target.value})} placeholder="you@company.com"/></div>
           <div className="field"><label>Password (8+ chars)</label><input type="password" value={f.password} onChange={e=>setAuthForm({...f,password:e.target.value})}/></div>
