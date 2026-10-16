@@ -9,7 +9,7 @@ export default async function handler(req, res) {
     await schemaReady;
   } catch (error) {
     schemaReady = undefined;
-    console.error("Roost API database initialization failed:", error);
+    console.error("Medash HR Suite API database initialization failed:", error);
     return res.status(503).json({ error: "Cloud database is not configured or is unavailable" });
   }
 
