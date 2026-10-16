@@ -3,6 +3,7 @@ import cors from "cors";
 import { authRouter } from "./routes/auth.js";
 import { employeesRouter } from "./routes/employees.js";
 import { payrollRouter } from "./routes/payroll.js";
+import { companyRouter } from "./routes/company.js";
 
 export const app = express();
 
@@ -15,5 +16,6 @@ app.get("/api/health", (_req, res) => res.json({ ok: true, service: "medash-hr-s
 app.use("/api/auth", authRouter);
 app.use("/api/employees", employeesRouter);
 app.use("/api/payroll", payrollRouter);
+app.use("/api/company", companyRouter);
 
 app.use((_req, res) => res.status(404).json({ error: "Not found" }));
