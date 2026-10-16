@@ -282,6 +282,7 @@ export default function Page(){
   const [licenseChecking,setLicenseChecking]=useState(true);
   const [apiUser,setApiUser]=useState(null);
   const [cloudLoading,setCloudLoading]=useState(false);
+  const [subscription,setSubscription]=useState(null);
   const [authForm,setAuthForm]=useState({mode:'login',companyName:'',name:'',email:'',password:'',countryCode:'NG'});
 
   function cloudOff(){
@@ -295,7 +296,15 @@ export default function Page(){
     if(me) setApiUser(me);
     setCloudLoading(true);
     try{
-      const [emps,runs,company]=await Promise.all([EmployeesAPI.list().catch(()=>null), PayrollAPI.list().catch(()=>null), CompanyAPI.get().catch(()=>null)]);
+      const company=await CompanyAPI.get().catch(()=>null);
+      if(company){
+        setSubscription(company);
+        const now=Date.now();
+        const trialExpired=company.subscriptionStatus!=="active" && company.trialEndsAt && new Date(company.trialEndsAt).getTime()<now;
+        const paidExpired=company.subscriptionStatus==="active" && company.subscriptionEndsAt && new Date(company.subscriptionEndsAt).getTime()<now;
+        if(trialExpired || paidExpired) return;
+      }
+      const [emps,runs]=await Promise.all([EmployeesAPI.list().catch(()=>null), PayrollAPI.list().catch(()=>null)]);
       setState(s=>{
         if(!s) return s;
         const ns=JSON.parse(JSON.stringify(s));
@@ -375,7 +384,7 @@ export default function Page(){
       showToast('Verification is unavailable. Please reconnect or contact support; activation has not been completed.');
     }
   }
-  if(!licenseOk){
+  if(!licenseOk && cloudOff()){
     return (
       <div style={{minHeight:'100vh', background:'#241623', color:'#EDEEF2', display:'flex', alignItems:'center', justifyContent:'center', padding:24}}>
         <div style={{maxWidth:520, width:'100%', background:'#EDEEF2', color:'#201526', borderRadius:12, padding:32, boxShadow:'0 20px 60px rgba(0,0,0,0.4)'}}>
@@ -395,6 +404,20 @@ export default function Page(){
         </div>
       </div>
     );
+  }
+  const trialExpired = !!(subscription && (
+    (subscription.subscriptionStatus !== "active" && subscription.trialEndsAt && new Date(subscription.trialEndsAt).getTime() < Date.now()) ||
+    (subscription.subscriptionStatus === "active" && subscription.subscriptionEndsAt && new Date(subscription.subscriptionEndsAt).getTime() < Date.now())
+  ));
+  if (trialExpired) {
+    return <div style={{minHeight:"100vh",background:"#241623",color:"#EDEEF2",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+      <div style={{maxWidth:520,width:"100%",background:"#EDEEF2",color:"#201526",borderRadius:12,padding:32}}>
+        <h1 style={{fontFamily:"Newsreader,serif",fontSize:28,marginTop:0}}>Your Medash trial has ended</h1>
+        <p style={{fontSize:14,lineHeight:1.7}}>Your company’s access is paused. Contact Medash to arrange manual subscription activation. Your company data has not been deleted.</p>
+        <a href="https://wa.me/2348026892077?text=Hello%2C%20please%20help%20me%20activate%20my%20Medash%20HR%20Suite%20subscription." target="_blank" rel="noreferrer" style={{display:"inline-block",background:"#E2735B",color:"#fff",padding:"12px 16px",borderRadius:7,textDecoration:"none",fontWeight:600}}>Contact Medash support</a>
+        <button onClick={()=>{clearSession();setApiUser(null);setSubscription(null);}} style={{display:"block",marginTop:14,background:"transparent",border:"1px solid rgba(32,21,38,.2)",padding:"10px 14px",borderRadius:7,cursor:"pointer"}}>Log out</button>
+      </div>
+    </div>;
   }
   const cloudBase=getApiBase();
   const cloudMode=!!(cloudBase && !cloudOff() && apiUser && getToken());
