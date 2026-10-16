@@ -17,7 +17,7 @@ A new HR management and payroll application. This repository is a staging founda
 - New cloud company signups receive a 14-day trial. Protected API routes enforce trial/subscription expiry; the company status endpoint remains available so the app can show the expiry screen.
 - Cloud company country/currency/locale/timezone are saved to the company record. The `/admin` page provides a secret-protected company list and manual subscription activation; set `ADMIN_ACTIVATION_SECRET` to a strong random value of at least 32 characters in Vercel before using it.
 - Required production environment variables: `DATABASE_URL`, `JWT_SECRET` (at least 32 characters), `ENCRYPTION_KEY` (exactly 64 hexadecimal characters), and `ADMIN_ACTIVATION_SECRET` (at least 32 characters). Keep them in Vercel server-side environment settings; never commit them.
-- The cloud API currently persists employees and payroll in PostgreSQL. Several other HR modules still use browser-local state, so do not onboard real customers or rely on cloud backup for leave, attendance, training, documents, reviews, hiring, and reports until cloud persistence is completed and tested.
+- Cloud API persistence includes employee records, payroll, and company-scoped workflow state for leave, attendance, training, reviews, hiring candidates, compliance, certificates, and organisation units. Employee document uploads/passport images and some employee-only display fields are still browser-local; do not treat those as backed up or shared across devices. Test all module persistence and role filters before using real employee data.
 - CI workflow added at `.github/workflows/ci.yml` to build backend and frontend on pushes and pull requests.
 
 ## Local development
