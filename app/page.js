@@ -314,6 +314,8 @@ export default function Page(){
         const ns=JSON.parse(JSON.stringify(s));
         if(remoteState && remoteState.state && typeof remoteState.state==="object"){
           Object.assign(ns, remoteState.state);
+          const defaults={leaves:[],attendance:[],orgUnits:[],compliance:{},reviews:[],candidates:[],enrollments:[],certificates:[]};
+          Object.entries(defaults).forEach(([key,value])=>{ if(!(key in remoteState.state)) ns[key]=value; });
         } else {
           ns.leaves=[]; ns.attendance=[]; ns.orgUnits=[]; ns.compliance={}; ns.reviews=[]; ns.candidates=[]; ns.enrollments=[]; ns.certificates=[];
         }
@@ -428,7 +430,7 @@ export default function Page(){
   if (trialExpired) {
     return <div style={{minHeight:"100vh",background:"#241623",color:"#EDEEF2",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <div style={{maxWidth:520,width:"100%",background:"#EDEEF2",color:"#201526",borderRadius:12,padding:32}}>
-        <h1 style={{fontFamily:"Newsreader,serif",fontSize:28,marginTop:0}}>Your Medash trial has ended</h1>
+        <h1 style={{fontFamily:"Newsreader,serif",fontSize:28,marginTop:0}}>{subscription?.subscriptionStatus==="active" ? "Your Medash subscription has expired" : "Your Medash trial has ended"}</h1>
         <p style={{fontSize:14,lineHeight:1.7}}>Your company’s access is paused. Contact Medash to arrange manual subscription activation. Your company data has not been deleted.</p>
         <a href="https://wa.me/2348026892077?text=Hello%2C%20please%20help%20me%20activate%20my%20Medash%20HR%20Suite%20subscription." target="_blank" rel="noreferrer" style={{display:"inline-block",background:"#E2735B",color:"#fff",padding:"12px 16px",borderRadius:7,textDecoration:"none",fontWeight:600}}>Contact Medash support</a>
         <button onClick={()=>{clearSession();setApiUser(null);setSubscription(null);}} style={{display:"block",marginTop:14,background:"transparent",border:"1px solid rgba(32,21,38,.2)",padding:"10px 14px",borderRadius:7,cursor:"pointer"}}>Log out</button>
