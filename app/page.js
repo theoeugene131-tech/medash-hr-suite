@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { loadState, saveState } from "@/lib/store";
 import { normalizeKey, isValidFormat, getStoredKey, saveLicense, clearLicense } from "@/lib/license";
-import { getApiBase, setApiBaseOverride, getToken, setSession, getSessionUser, clearSession, AuthAPI, EmployeesAPI, PayrollAPI, CompanyAPI } from "@/lib/api";
+import { getApiBase, setApiBaseOverride, getToken, setSession, getSessionUser, clearSession, AuthAPI, EmployeesAPI, PayrollAPI, CompanyAPI, CompanyStateAPI } from "@/lib/api";
 import CountrySettings from "@/components/CountrySettings";
 import { formatMoney, formatDate, getCurrencySymbol } from "@/lib/region";
 
@@ -42,6 +42,7 @@ const LEAVE_TYPES = [
 function initials(name){ return name.trim().split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase(); }
 function money(n){ return formatMoney(n); }
 function uid(){ return Math.random().toString(36).slice(2,9); }
+function companyStatePayload(s){ return { companyName:s.companyName, countryCode:s.countryCode, currency:s.currency, locale:s.locale, timezone:s.timezone, compliance:s.compliance||{}, reviews:s.reviews||[], candidates:s.candidates||[], trainings:s.trainings||[], enrollments:s.enrollments||[], certificates:s.certificates||[], leaves:s.leaves||[], attendance:s.attendance||[], orgUnits:s.orgUnits||[] }; }
 function addDays(date,n){ const d=new Date(date); d.setDate(d.getDate()+n); return d; }
 // PAYE per the (pre-2026) Personal Income Tax Act graduated bands, applied to
 // income AFTER the Consolidated Relief Allowance and pension are deducted —
@@ -282,6 +283,7 @@ export default function Page(){
   const [licenseChecking,setLicenseChecking]=useState(true);
   const [apiUser,setApiUser]=useState(null);
   const [cloudLoading,setCloudLoading]=useState(false);
+  const [cloudStateReady,setCloudStateReady]=useState(false);
   const [subscription,setSubscription]=useState(null);
   const [authForm,setAuthForm]=useState({mode:'login',companyName:'',name:'',email:'',password:'',countryCode:'NG'});
 
@@ -291,6 +293,7 @@ export default function Page(){
       return params.get('local')==='1' || localStorage.getItem(CLOUD_OFF_KEY)==='1';
     }catch{ return true; }
   }
+  const cloudSyncEnabled=!!(getApiBase() && !cloudOff() && apiUser && getToken());
   async function hydrateCloud(){
     const me=getSessionUser();
     if(me) setApiUser(me);
@@ -304,10 +307,16 @@ export default function Page(){
         const paidExpired=company.subscriptionStatus==="active" && company.subscriptionEndsAt && new Date(company.subscriptionEndsAt).getTime()<now;
         if(trialExpired || paidExpired) return;
       }
+      const remoteState=await CompanyStateAPI.get().catch(()=>null);
       const [emps,runs]=await Promise.all([EmployeesAPI.list().catch(()=>null), PayrollAPI.list().catch(()=>null)]);
       setState(s=>{
         if(!s) return s;
         const ns=JSON.parse(JSON.stringify(s));
+        if(remoteState && remoteState.state && typeof remoteState.state==="object"){
+          Object.assign(ns, remoteState.state);
+        } else {
+          ns.leaves=[]; ns.attendance=[]; ns.orgUnits=[]; ns.compliance={}; ns.reviews=[]; ns.candidates=[]; ns.enrollments=[]; ns.certificates=[];
+        }
         if(company && company.countryCode){ ns.countryCode=company.countryCode; ns.currency=company.currency; ns.locale=company.locale; ns.timezone=company.timezone; ns.companyName=company.name||ns.companyName; }
         if(Array.isArray(emps)){
           if(me && me.role==='employee'){
@@ -331,6 +340,7 @@ export default function Page(){
         }
         return ns;
       });
+      setCloudStateReady(!!remoteState);
     }finally{ setCloudLoading(false); }
   }
 
@@ -369,6 +379,12 @@ export default function Page(){
     return ()=>{ window.removeEventListener('online',updateOnline); window.removeEventListener('offline',updateOnline); };
   },[]);
   useEffect(()=>{ if(state) saveState(state); },[state]);
+  useEffect(()=>{
+    if(!state || !cloudSyncEnabled || !cloudStateReady || cloudLoading || !apiUser) return;
+    const payload=companyStatePayload(state);
+    const timer=setTimeout(()=>{ CompanyStateAPI.save(payload).catch(err=>{ if(err?.message && /trial has ended|subscription has expired/i.test(err.message)) setToast(err.message); }); },600);
+    return ()=>clearTimeout(timer);
+  },[state,cloudSyncEnabled,cloudStateReady,cloudLoading,apiUser]);
   useEffect(()=>{ if(!online) setToast("You are offline — changes will sync when you reconnect."); else if(toast && toast.includes("offline")) setToast("Back online ✓"); },[online]);
 
   if(licenseChecking || !state) return <div style={{padding:60,textAlign:'center',color:'#B39FB0'}}>Loading Medash HR Suite…</div>;
