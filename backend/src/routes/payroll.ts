@@ -21,6 +21,11 @@ payrollRouter.get("/", async (req: AuthedRequest, res) => {
 });
 
 payrollRouter.post("/run", requireAdmin, async (req: AuthedRequest, res) => {
+  const company = await db.find("companies", req.auth!.companyId);
+  const countryCode = company?.countryCode || "NG";
+  if (countryCode !== "NG") {
+    return res.status(400).json({ error: countryCode === "GB" ? "UK payroll is not available yet. UK tax, National Insurance, pension and payslip rules must be implemented and tested first." : "US payroll is not available yet. Federal/state tax, Social Security, Medicare and payslip rules must be implemented and tested first." });
+  }
   const employees = (await db.table("employees", req.auth!.companyId)).filter((employee: any) => employee.active);
   if (!employees.length) return res.status(400).json({ error: "No active employees to include." });
   const runs = await db.table("payrollRuns", req.auth!.companyId);
