@@ -72,7 +72,7 @@ function estimateDeductions(gross){
 // ---- Cloud backend (opt-in) helpers ----
 // Map backend employee rows to the local state shape (frontend-only extras
 // like avatar color, department, documents stay local).
-const CLOUD_OFF_KEY='roost_cloud_off';
+const CLOUD_OFF_KEY='medash_cloud_off';
 function cloudEmployeeToLocal(e,i){
   const docs={}; try{ DOC_TYPES.forEach(dt=> docs[dt.key]=null); }catch{}
   return { id:e.id, name:e.name, role:e.role, gross:Number(e.gross)||0, bank:e.bank||'', account:e.account||'', startDate:e.startDate||'', dob:e.dob||'', active:e.active!==false, color:AVATAR_COLORS[(i||0)%AVATAR_COLORS.length], department:null, nin:e.nin||'', payeTin:e.payeTin||'', nhfNumber:e.nhfNumber||'', pensionPin:e.pensionPin||'', nsitfNumber:e.nsitfNumber||'', passportPhoto:null, documents:docs };
@@ -474,7 +474,7 @@ export default function Page(){
             <button onClick={()=>{
               const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
               const url=URL.createObjectURL(blob);
-              const a=document.createElement('a'); a.href=url; a.download=`roost-backup-${new Date().toISOString().slice(0,10)}.json`; a.click(); URL.revokeObjectURL(url); showToast('Backup saved — keeps all data offline-safe');
+              const a=document.createElement('a'); a.href=url; a.download=`medash-backup-${new Date().toISOString().slice(0,10)}.json`; a.click(); URL.revokeObjectURL(url); showToast('Backup saved — keeps all data offline-safe');
             }} style={{background:'#4C8577',color:'#fff',border:'none',borderRadius:6,padding:'8px 10px',fontSize:11,cursor:'pointer',fontWeight:700}}>⬇ Save / Backup</button>
             <label style={{background:'transparent',border:'1px solid var(--line)',color:'var(--muted)',borderRadius:6,padding:'8px 10px',fontSize:11,cursor:'pointer'}}>⬆ Restore<input type="file" accept=".json" style={{display:'none'}} onChange={ev=>{ const f=ev.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ const j=JSON.parse(r.result); if(!j.employees) throw new Error('Invalid backup'); if(confirm(`Restore backup from ${j.companyName||'file'}? This will overwrite current data.`)){ const mig=migrateState(j); setState(mig); saveState(mig); showToast('Backup restored ✓'); }}catch(e){ alert('Invalid backup file'); } }; r.readAsText(f); }}/></label>
             <button onClick={()=>{ if(confirm('Reset to demo data?')){ const s=seedDemo(); setState(s); saveState(s); showToast('Demo data restored'); } }} style={{background:'transparent',border:'1px solid var(--line)',color:'var(--muted)',borderRadius:6,padding:'8px 10px',fontSize:11,cursor:'pointer'}}>Reset demo</button>
@@ -610,7 +610,7 @@ function Documents({state,update,setModal,showToast,docFilter,setDocFilter}){
     <div className="panel-head"><div><h2>Document repository</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Progress of staff compliance — proper order: onboarding → IDs → appraisals · {overall}/{totalReq} docs uploaded</p></div><button className="btn btn-ghost" style={{color:'var(--paper)',borderColor:'var(--line)'}} onClick={()=>{
       const header=['Staff',...DOC_TYPES.map(d=>d.label)].join(',');
       const rows=state.employees.map(e=> [ `"${e.name}"`, ...DOC_TYPES.map(dt=> e.documents?.[dt.key]?'✓':'' ) ].join(',')).join('\n');
-      const csv=header+'\n'+rows; const blob=new Blob([csv],{type:'text/csv'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='roost-doc-compliance.csv'; a.click(); URL.revokeObjectURL(url);
+      const csv=header+'\n'+rows; const blob=new Blob([csv],{type:'text/csv'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='medash-doc-compliance.csv'; a.click(); URL.revokeObjectURL(url);
       showToast('CSV exported');
     }}>Export CSV</button></div>
     <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
