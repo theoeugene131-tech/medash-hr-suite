@@ -1295,7 +1295,7 @@ function AuthScreen({authForm,setAuthForm,onAuth,showToast}){
           <button type="submit" disabled={busy} className="btn btn-primary" style={{width:'100%',marginTop:4,padding:12,opacity:busy?0.6:1}}>{busy?'Please wait…':f.mode==='signup'?'Create company + owner login':'Log in'}</button>
         </form>
         <div style={{marginTop:14,display:'flex',gap:8,flexWrap:'wrap'}}>
-          <button onClick={()=>{ localStorage.setItem(CLOUD_OFF_KEY,'1'); location.reload(); }} style={{fontSize:12,border:'1px solid rgba(32,21,38,0.2)',padding:'8px 12px',borderRadius:6,background:'transparent',cursor:'pointer'}}>Continue offline (no cloud)</button>
+          <button onClick={()=>{ location.href='?demo=1&local=1'; }} style={{fontSize:12,border:'1px solid rgba(32,21,38,0.2)',padding:'8px 12px',borderRadius:6,background:'transparent',cursor:'pointer'}}>Continue offline (no cloud)</button>
           <button onClick={()=>{ const u=prompt('Backend URL (empty = default from deploy):', localStorage.getItem('medash_api_base')||''); if(u!==null){ setApiBaseOverride(u.trim()); location.reload(); } }} style={{fontSize:12,border:'1px solid rgba(32,21,38,0.2)',padding:'8px 12px',borderRadius:6,background:'transparent',cursor:'pointer'}}>Change backend URL</button>
         </div>
         <p style={{fontSize:11,opacity:0.55,marginTop:14}}>Each person logs in with their own email — employees only ever see their own payslip. Invite them from Team → Invite after logging in.</p>
