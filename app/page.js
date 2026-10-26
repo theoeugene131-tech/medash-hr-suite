@@ -635,8 +635,10 @@ function Overview({state,setModal}){
       <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:14}}><div style={{fontSize:10,letterSpacing:0.06+'em',textTransform:'uppercase',color:'var(--muted)'}}>Doc compliance</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{docCompletion}%</div><div style={{fontSize:11,color:'var(--muted)'}}>avg across team</div></div>
       <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:14}}><div style={{fontSize:10,letterSpacing:0.06+'em',textTransform:'uppercase',color:'var(--muted)'}}>Staff with docs</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{state.employees.filter(e=>DOC_TYPES.some(dt=>e.documents?.[dt.key])).length}/{state.employees.length}</div></div>
     </div>
-    <div className="panel-head"><div><h2>Compliance calendar</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Deadlines for most recent payroll run</p></div></div>
-    {!lastRun ? <div style={{color:'var(--muted)',textAlign:'center',padding:'30px 0'}}>Run your first payroll to start tracking compliance deadlines.</div> :
+    <div className="panel-head"><div><h2>Compliance calendar</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>{state.countryCode==='NG'?'Internal reminders for the most recent payroll run':'Jurisdiction-specific deadlines are not configured'}</p></div></div>
+    {state.countryCode!=='NG' ? <div style={{color:'var(--muted)',padding:20,background:'var(--bg-2)',borderRadius:8,lineHeight:1.7}}>Medash does not currently provide a statutory compliance calendar for this jurisdiction. Confirm local deadlines with a qualified payroll or compliance professional. Nigerian PAYE, pension, NHF and NSITF reminders are not shown for UK or US companies.</div> :
+      !lastRun ? <div style={{color:'var(--muted)',textAlign:'center',padding:'30px 0'}}>Create a payroll record to start tracking internal reminders. Dates shown here are not certified statutory deadlines.</div> :
+      <><p style={{fontSize:11,color:'var(--muted)',lineHeight:1.6}}>Internal tracking only. Verify current 2026 Nigerian rules and filing deadlines with a qualified professional before relying on these reminders.</p>
       <div style={{display:'flex',gap:12,overflowX:'auto',paddingBottom:6,marginBottom:32}}>
         {items.map(it=>{
           const status=complianceStatus(state,lastRun.period,it.key);
@@ -649,7 +651,7 @@ function Overview({state,setModal}){
             <div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{it.agency} · {periodLabel(lastRun.period)}</div>
           </div>;
         })}
-      </div>
+      </div></>
     }
     <div className="panel-head"><div><h2>Team roster</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Click name to view documents — {state.employees.filter(e=>e.active).length} active</p></div></div>
     <div className="grid">{state.employees.map(e=>{
@@ -1238,20 +1240,30 @@ function History({state,expandedRun,setExpandedRun}){
   </>);
 }
 function Compliance({state,update}){
-  if(!state.runs.length) return <><div className="panel-head"><div><h2>Compliance</h2></div></div><div style={{color:'var(--muted)',textAlign:'center',padding:30}}>Run payroll to generate compliance obligations.</div></>;
+  if(state.countryCode!=='NG') return <>
+    <div className="panel-head"><div><h2>Compliance</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Jurisdiction-specific tracking</p></div></div>
+    <div style={{color:'var(--muted)',padding:22,background:'var(--bg-2)',borderRadius:8,lineHeight:1.7}}>
+      A statutory compliance calendar is not configured for {COUNTRY_LABELS[state.countryCode]||'this jurisdiction'}. This screen will not display Nigerian obligations for a UK or US company. Confirm local filing dates and obligations with a qualified local professional.
+    </div>
+  </>;
+  if(!state.runs.length) return <>
+    <div className="panel-head"><div><h2>Compliance</h2></div></div>
+    <div style={{color:'var(--muted)',textAlign:'center',padding:30}}>Create a payroll record to start internal compliance tracking.</div>
+  </>;
   const items=[{key:'paye',what:'PAYE remittance',agency:'State IRS'},{key:'pension',what:'Pension remittance',agency:'PenCom / PFA'},{key:'nhf',what:'NHF remittance',agency:'Federal Mortgage Bank'},{key:'nsitf',what:'NSITF contribution',agency:'NSITF'}];
   const rows=[];
   [...state.runs].reverse().forEach(r=>items.forEach(it=>rows.push({period:r.period,...it,status:complianceStatus(state,r.period,it.key),due:getDueDates(r.period)[it.key]})));
   return (<>
-    <div className="panel-head"><div><h2>Compliance</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Statutory obligations across every payroll run</p></div></div>
+    <div className="panel-head"><div><h2>Internal compliance tracking</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Internal reminders, not certified statutory deadlines</p></div></div>
+    <div style={{padding:12,marginBottom:14,borderRadius:8,background:'var(--bg-2)',color:'var(--muted)',fontSize:12,lineHeight:1.7}}>Nigeria’s tax rules changed in 2026. These legacy reminder dates are for internal tracking only; confirm current obligations and deadlines with a qualified Nigerian payroll professional.</div>
     <div style={{overflowX:'auto',background:'#EDEEF2',borderRadius:8}}>
     <table style={{width:'100%',borderCollapse:'collapse',color:'#201526',fontSize:13}}>
-      <thead><tr style={{background:'#E0E2E8'}}><th style={{textAlign:'left',padding:'12px 16px',fontSize:10.5,textTransform:'uppercase',opacity:0.55}}>Period</th><th style={{textAlign:'left',padding:'12px 16px',fontSize:10.5,textTransform:'uppercase',opacity:0.55}}>Obligation</th><th style={{textAlign:'left',padding:'12px 16px',fontSize:10.5,textTransform:'uppercase',opacity:0.55}}>Agency</th><th style={{textAlign:'left',padding:'12px 16px',fontSize:10.5,textTransform:'uppercase',opacity:0.55}}>Due</th><th style={{textAlign:'left',padding:'12px 16px',fontSize:10.5,textTransform:'uppercase',opacity:0.55}}>Status</th><th></th></tr></thead>
+      <thead><tr style={{background:'#E0E2E8'}}><th style={{textAlign:'left',padding:'12px 16px',fontSize:10.5,textTransform:'uppercase',opacity:0.55}}>Period</th><th style={{textAlign:'left',padding:'12px 16px',fontSize:10.5,textTransform:'uppercase',opacity:0.55}}>Internal reminder</th><th style={{textAlign:'left',padding:'12px 16px',fontSize:10.5,textTransform:'uppercase',opacity:0.55}}>Agency</th><th style={{textAlign:'left',padding:'12px 16px',fontSize:10.5,textTransform:'uppercase',opacity:0.55}}>Reminder date</th><th style={{textAlign:'left',padding:'12px 16px',fontSize:10.5,textTransform:'uppercase',opacity:0.55}}>Status</th><th></th></tr></thead>
       <tbody>{rows.map((row,i)=>{
         const bg=row.status==='filed'?'rgba(76,133,119,0.15)':row.status==='overdue'?'rgba(226,115,91,0.18)':'rgba(201,162,39,0.18)';
         const color=row.status==='filed'?'#2E5C51':row.status==='overdue'?'#8C3B28':'#8A6B0F';
-        const label=row.status==='filed'?'Filed':row.status==='overdue'?'Overdue':'Pending';
-        return <tr key={i} style={{borderBottom:'1px solid rgba(32,21,38,0.07)'}}><td style={{padding:'12px 16px'}}>{periodLabel(row.period)}</td><td style={{padding:'12px 16px'}}>{row.what}</td><td style={{padding:'12px 16px'}}>{row.agency}</td><td style={{padding:'12px 16px',fontFamily:'IBM Plex Mono'}}>{formatDate(row.due)}</td><td style={{padding:'12px 16px'}}><span style={{fontFamily:'IBM Plex Mono',fontSize:10,padding:'4px 8px',borderRadius:20,background:bg,color}}>{label}</span></td><td style={{padding:'12px 16px'}}><button onClick={()=>update(s=>{if(!s.compliance[row.period]) s.compliance[row.period]={}; s.compliance[row.period][row.key]=!s.compliance[row.period][row.key];})} style={{background:row.status==='filed'?'var(--teal)':'none',color:row.status==='filed'?'#fff':'var(--ink)',border:'1px solid rgba(32,21,38,0.2)',borderRadius:20,padding:'5px 12px',fontSize:11.5,cursor:'pointer'}}>{row.status==='filed'?'Filed ✓':'Mark filed'}</button></td></tr>;
+        const label=row.status==='filed'?'Marked filed':row.status==='overdue'?'Past reminder date':'Pending';
+        return <tr key={i} style={{borderBottom:'1px solid rgba(32,21,38,0.07)'}}><td style={{padding:'12px 16px'}}>{periodLabel(row.period)}</td><td style={{padding:'12px 16px'}}>{row.what}</td><td style={{padding:'12px 16px'}}>{row.agency}</td><td style={{padding:'12px 16px',fontFamily:'IBM Plex Mono'}}>{formatDate(row.due)}</td><td style={{padding:'12px 16px'}}><span style={{fontFamily:'IBM Plex Mono',fontSize:10,padding:'4px 8px',borderRadius:20,background:bg,color}}>{label}</span></td><td style={{padding:'12px 16px'}}><button onClick={()=>update(s=>{if(!s.compliance[row.period]) s.compliance[row.period]={}; s.compliance[row.period][row.key]=!s.compliance[row.period][row.key];})} style={{background:row.status==='filed'?'var(--teal)':'none',color:row.status==='filed'?'#fff':'var(--ink)',border:'1px solid rgba(32,21,38,0.2)',borderRadius:20,padding:'5px 12px',fontSize:11.5,cursor:'pointer'}}>{row.status==='filed'?'Marked ✓':'Mark reviewed'}</button></td></tr>;
       })}</tbody>
     </table>
     </div>
@@ -1283,45 +1295,47 @@ function Hiring({state,update,setModal,showToast}){
   </>);
 }
 function Reports({state}){
-  const runs=state.runs; const active=state.employees.filter(e=>e.active);
-  const totalPaidOut=runs.reduce((s,r)=>s+r.lines.reduce((s2,l)=>s2+l.gross+l.pensionEmployer,0),0);
-  const avgNet=active.length?Math.round(active.reduce((s,e)=>s+estimateDeductions(e.gross).net,0)/active.length):0;
-  const rows=[]; runs.forEach(r=>['paye','pension','nhf','nsitf'].forEach(item=>rows.push(complianceStatus(state,r.period,item))));
+  const runs=state.runs;
+  const totalRecordedCost=runs.reduce((s,r)=>s+(r.lines||[]).reduce((s2,l)=>s2+Number(l.gross||0)+Number(l.pensionEmployer||0),0),0);
+  const latestLines=runs.length?(runs[runs.length-1].lines||[]):[];
+  const avgNet=latestLines.length?Math.round(latestLines.reduce((s,l)=>s+Number(l.net||0),0)/latestLines.length):0;
+  const rows=[];
+  if(state.countryCode==='NG') runs.forEach(r=>['paye','pension','nhf','nsitf'].forEach(item=>rows.push(complianceStatus(state,r.period,item))));
   const filedRate=rows.length?Math.round(100*rows.filter(s=>s==='filed').length/rows.length):0;
   const turnover=state.employees.length?Math.round(100*state.employees.filter(e=>!e.active).length/state.employees.length):0;
-  const maxCost=Math.max(...runs.map(r=>r.lines.reduce((s,l)=>s+l.gross+l.pensionEmployer,0)),1);
+  const maxCost=Math.max(...runs.map(r=>(r.lines||[]).reduce((s,l)=>s+Number(l.gross||0)+Number(l.pensionEmployer||0),0)),1);
   return (<>
-    <div className="panel-head"><div><h2>Reports</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Trends across your payroll and team history</p></div></div>
+    <div className="panel-head"><div><h2>Reports</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Trends across recorded payroll and team history</p></div></div>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:14,marginBottom:30}}>
-      <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:16}}><div style={{fontSize:10.5,textTransform:'uppercase',color:'var(--muted)',marginBottom:6}}>Total paid out</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{money(totalPaidOut)}</div></div>
-      <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:16}}><div style={{fontSize:10.5,textTransform:'uppercase',color:'var(--muted)',marginBottom:6}}>Avg. net pay</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{money(avgNet)}</div></div>
-      <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:16}}><div style={{fontSize:10.5,textTransform:'uppercase',color:'var(--muted)',marginBottom:6}}>Compliance filing rate</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{filedRate}%</div></div>
-      <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:16}}><div style={{fontSize:10.5,textTransform:'uppercase',color:'var(--muted)',marginBottom:6}}>Turnover rate</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{turnover}%</div></div>
+      <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:16}}><div style={{fontSize:10.5,textTransform:'uppercase',color:'var(--muted)',marginBottom:6}}>Recorded payroll cost</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{money(totalRecordedCost)}</div></div>
+      <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:16}}><div style={{fontSize:10.5,textTransform:'uppercase',color:'var(--muted)',marginBottom:6}}>Latest run · avg. net pay</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{latestLines.length?money(avgNet):'—'}</div></div>
+      <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:16}}><div style={{fontSize:10.5,textTransform:'uppercase',color:'var(--muted)',marginBottom:6}}>Internal filing tracker</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{state.countryCode==='NG'&&rows.length?filedRate+'%':'—'}</div></div>
+      <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:16}}><div style={{fontSize:10.5,textTransform:'uppercase',color:'var(--muted)',marginBottom:6}}>Inactive team rate</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{turnover}%</div></div>
     </div>
-    <div className="panel-head"><div><h2>Payroll cost per run</h2></div></div>
+    <div className="panel-head"><div><h2>Recorded payroll cost per run</h2></div></div>
     {runs.length? <div style={{display:'flex',alignItems:'flex-end',gap:10,height:140,padding:'10px 0'}}>{runs.map(r=>{
-      const cost=r.lines.reduce((s,l)=>s+l.gross+l.pensionEmployer,0);
+      const cost=(r.lines||[]).reduce((s,l)=>s+Number(l.gross||0)+Number(l.pensionEmployer||0),0);
       const h=Math.round((cost/maxCost)*110)+10;
       return <div key={r.id} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,flex:1}}><div style={{fontSize:10.5,fontFamily:'IBM Plex Mono'}}>{(cost/1000).toFixed(0)}k</div><div style={{width:'100%',maxWidth:36,background:'var(--coral)',borderRadius:'4px 4px 0 0',height:h}}></div><div style={{fontSize:10,color:'var(--muted)'}}>{periodLabel(r.period).slice(0,3)}</div></div>;
-    })}</div> : <div style={{color:'var(--muted)',textAlign:'center',padding:30}}>Run payroll to see cost trends.</div>}
+    })}</div> : <div style={{color:'var(--muted)',textAlign:'center',padding:30}}>Save a payroll draft to see cost trends.</div>}
   </>);
 }
 function MyProfile({state}){
   const e=state.employees.find(x=>x.id===state.viewingEmployeeId)||state.employees[0];
   if(!e) return <div style={{color:'var(--muted)',textAlign:'center',padding:30}}>No employee record</div>;
-  const d=estimateDeductions(e.gross);
-  const myRuns=state.runs.map(r=>({period:r.period,line:r.lines.find(l=>l.employeeId===e.id)})).filter(r=>r.line);
+  const myRuns=state.runs.map(r=>({period:r.period,line:(r.lines||[]).find(l=>l.employeeId===e.id)})).filter(r=>r.line).reverse();
+  const latest=myRuns[0]?.line;
   const myReviews=state.reviews.filter(r=>r.employeeId===e.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
   return (<>
     <div className="panel-head"><div><h2>{e.name}</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>{e.role}</p></div></div>
-    <div style={{fontSize:10.5,textTransform:'uppercase',opacity:0.55,fontWeight:600,margin:'16px 0 8px'}}>Current payslip</div>
-    <div className="run-row" style={{cursor:'default'}}>
-      <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',borderBottom:'1px solid rgba(32,21,38,0.08)',fontSize:13}}><span>Gross salary</span><span style={{fontFamily:'IBM Plex Mono',fontWeight:500}}>{money(e.gross)}</span></div>
-      <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',borderBottom:'1px solid rgba(32,21,38,0.08)',fontSize:13,color:'#8C3B28'}}><span>PAYE tax</span><span style={{fontFamily:'IBM Plex Mono'}}>− {money(d.monthlyPAYE)}</span></div>
-      <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',borderBottom:'1px solid rgba(32,21,38,0.08)',fontSize:13,color:'#8C3B28'}}><span>Pension (8%)</span><span style={{fontFamily:'IBM Plex Mono'}}>− {money(d.pensionEmployee)}</span></div>
-      <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',borderBottom:'1px solid rgba(32,21,38,0.08)',fontSize:13,color:'#8C3B28'}}><span>NHF (2.5%)</span><span style={{fontFamily:'IBM Plex Mono'}}>− {money(d.nhf)}</span></div>
-      <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontWeight:700,fontSize:14.5}}><span>Net pay</span><span style={{fontFamily:'IBM Plex Mono'}}>{money(d.net)}</span></div>
-    </div>
+    <div style={{fontSize:10.5,textTransform:'uppercase',opacity:0.55,fontWeight:600,margin:'16px 0 8px'}}>Latest recorded payslip</div>
+    {latest ? <div className="run-row" style={{cursor:'default'}}>
+      <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',borderBottom:'1px solid rgba(32,21,38,0.08)',fontSize:13}}><span>Period</span><span style={{fontFamily:'IBM Plex Mono',fontWeight:500}}>{periodLabel(myRuns[0].period)}</span></div>
+      <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',borderBottom:'1px solid rgba(32,21,38,0.08)',fontSize:13}}><span>Gross salary</span><span style={{fontFamily:'IBM Plex Mono',fontWeight:500}}>{money(latest.gross)}</span></div>
+      <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',borderBottom:'1px solid rgba(32,21,38,0.08)',fontSize:13,color:'#8C3B28'}}><span>Total recorded deductions</span><span style={{fontFamily:'IBM Plex Mono'}}>− {money(Math.max(0,Number(latest.gross||0)-Number(latest.net||0)))}</span></div>
+      <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontWeight:700,fontSize:14.5}}><span>Recorded net pay</span><span style={{fontFamily:'IBM Plex Mono'}}>{money(latest.net)}</span></div>
+      <p style={{fontSize:11,color:'var(--muted)',lineHeight:1.6}}>This is the latest saved payroll record, not proof of payment or a statutory payslip certification.</p>
+    </div> : <div style={{color:'var(--muted)',padding:20,background:'var(--bg-2)',borderRadius:8}}>No payroll record has been saved for you yet. A current net-pay estimate is not shown because statutory rules are not validated for all supported jurisdictions.</div>}
     <div className="panel-head" style={{marginTop:26}}><div><h2>Payslip history</h2></div></div>
     {myRuns.length? myRuns.map(r=><div key={r.period} className="run-row" style={{cursor:'default',display:'flex',justifyContent:'space-between'}}><span style={{fontFamily:'Newsreader',fontWeight:600}}>{periodLabel(r.period)}</span><span style={{fontFamily:'IBM Plex Mono',fontWeight:600}}>{money(r.line.net)}</span></div>) : <div style={{color:'var(--muted)',textAlign:'center',padding:20}}>No payroll runs yet.</div>}
     <div className="panel-head" style={{marginTop:26}}><div><h2>My reviews</h2></div></div>
