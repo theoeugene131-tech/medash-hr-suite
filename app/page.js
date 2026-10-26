@@ -32,7 +32,7 @@ const COUNTRY_LABELS = { NG:'Nigeria', GB:'United Kingdom', UK:'United Kingdom',
 const NAV_GROUPS = [
   { key:'overview', label:'Overview', description:'See the company snapshot, team size, monthly cost, next payroll period and open compliance items.', tabs:['overview'] },
   { key:'hr', label:'HR Workspace', description:'Manage team records, onboarding documents, internal regulatory checklists, training, leave, attendance, org chart, hiring, reviews and employee profiles.', tabs:['team','docs','regulatory','training','leave','attendance','org','reviews','hiring','myprofile'] },
-  { key:'payroll', label:'Payroll & Compliance', description:'Enter or import payroll, review payroll history, monitor compliance, view reports and set your country. Automatic estimates are Nigeria-only.', tabs:['runpayroll','history','compliance','reports','settings'] }
+  { key:'payroll', label:'Payroll & Compliance', description:'Enter or import payroll, review payroll history and reports, and set your country. Statutory estimates are paused pending validation.', tabs:['runpayroll','history','compliance','reports','settings'] }
 ];
 function visibleTabs(role){
   if(role==='employee') return ['myprofile','training','leave','attendance'];
@@ -50,34 +50,6 @@ function money(n){ return formatMoney(n); }
 function uid(){ return Math.random().toString(36).slice(2,9); }
 function companyStatePayload(s){ return { companyName:s.companyName, countryCode:s.countryCode, currency:s.currency, locale:s.locale, timezone:s.timezone, compliance:s.compliance||{}, reviews:s.reviews||[], candidates:s.candidates||[], trainings:s.trainings||[], enrollments:s.enrollments||[], certificates:s.certificates||[], leaves:s.leaves||[], attendance:s.attendance||[], orgUnits:s.orgUnits||[] }; }
 function addDays(date,n){ const d=new Date(date); d.setDate(d.getDate()+n); return d; }
-// PAYE per the (pre-2026) Personal Income Tax Act graduated bands, applied to
-// income AFTER the Consolidated Relief Allowance and pension are deducted —
-// the previous version taxed a flat (annual - 300,000) with no CRA and no
-// pension relief, which overstates tax owed for nearly every salary level.
-//
-// IMPORTANT: Nigeria's tax rules changed under the Tax Reform Act effective
-// Jan 2026. Verify current bands/reliefs with FIRS or an accountant before
-// relying on this for real payslips or statutory filings — do not treat
-// this function as compliance-certified as-is.
-function estimateDeductions(gross){
-  const annual = gross*12;
-  // Consolidated Relief Allowance: higher of ₦200,000 or 1% of gross income,
-  // plus 20% of gross income.
-  const cra = Math.max(200000, annual*0.01) + annual*0.20;
-  const pensionEmployeeAnnual = annual*0.08;
-  const pensionEmployerAnnual = annual*0.10;
-  const taxable = Math.max(annual - cra - pensionEmployeeAnnual, 0);
-  const bands = [[300000,0.07],[300000,0.11],[500000,0.15],[500000,0.19],[1600000,0.21],[Infinity,0.24]];
-  let tax=0, remaining=taxable;
-  for(const [size,rate] of bands){ if(remaining<=0) break; const amt=Math.min(size,remaining); tax+=amt*rate; remaining-=amt; }
-  const monthlyPAYE=Math.round(tax/12);
-  const pensionEmployee=Math.round(pensionEmployeeAnnual/12);
-  const pensionEmployer=Math.round(pensionEmployerAnnual/12);
-  const nhf=Math.round(gross*0.025);
-  const nsitf=Math.round(gross*0.01);
-  const net=gross-monthlyPAYE-pensionEmployee-nhf;
-  return {monthlyPAYE,pensionEmployee,pensionEmployer,nhf,nsitf,net};
-}
 // ---- Cloud backend (opt-in) helpers ----
 // Map backend employee rows to the local state shape (frontend-only extras
 // like avatar color, department, documents stay local).
@@ -111,6 +83,7 @@ function complianceStatus(state, period, item){
 function migrateState(s){
   let changed=false;
   if(!s.companyName){ s.companyName=''; changed=true; }
+  if(s.countryCode==='UK'){ s.countryCode='GB'; changed=true; }
   if(!s.countryCode){ s.countryCode='NG'; changed=true; }
   if(!s.currency){ s.currency=s.countryCode==='GB'?'GBP':s.countryCode==='US'?'USD':'NGN'; changed=true; }
   if(!s.locale){ s.locale=s.countryCode==='GB'?'en-GB':s.countryCode==='US'?'en-US':'en-NG'; changed=true; }
