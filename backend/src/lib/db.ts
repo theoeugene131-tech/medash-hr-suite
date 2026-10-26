@@ -26,6 +26,35 @@ export const db = {
     await pool.query("UPDATE records SET data = $1, company_id = $2, updated_at = now() WHERE table_name = $3 AND id = $4", [JSON.stringify(merged), merged.companyId ?? null, name, id]);
     return merged;
   },
+  // Tenant-scoped mutations keep the company boundary inside the SQL query,
+  // rather than relying only on a separate ownership check in a route.
+  async findForCompany(name: string, id: string, companyId: string) {
+    const result = await pool.query(
+      "SELECT data FROM records WHERE table_name = $1 AND id = $2 AND company_id = $3",
+      [name, id, companyId]
+    );
+    return result.rowCount ? result.rows[0].data : null;
+  },
+  async updateForCompany(name: string, id: string, companyId: string, patch: Record<string, any>) {
+    const result = await pool.query(
+      "SELECT data FROM records WHERE table_name = $1 AND id = $2 AND company_id = $3",
+      [name, id, companyId]
+    );
+    if (!result.rowCount) return null;
+    const merged = { ...result.rows[0].data, ...patch, companyId };
+    const updated = await pool.query(
+      "UPDATE records SET data = $1, updated_at = now() WHERE table_name = $2 AND id = $3 AND company_id = $4 RETURNING data",
+      [JSON.stringify(merged), name, id, companyId]
+    );
+    return updated.rowCount ? updated.rows[0].data : null;
+  },
+  async deleteForCompany(name: string, id: string, companyId: string) {
+    const result = await pool.query(
+      "DELETE FROM records WHERE table_name = $1 AND id = $2 AND company_id = $3",
+      [name, id, companyId]
+    );
+    return (result.rowCount ?? 0) > 0;
+  },
   async find(name: string, id: string) {
     const result = await pool.query("SELECT data FROM records WHERE table_name = $1 AND id = $2", [name, id]);
     return result.rowCount ? result.rows[0].data : null;
