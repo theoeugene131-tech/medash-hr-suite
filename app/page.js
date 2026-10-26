@@ -81,8 +81,8 @@ function cloudEmployeeToLocal(e,i){
   return { id:e.id, name:e.name, role:e.role, gross:Number(e.gross)||0, bank:e.bank||'', account:e.account||'', startDate:e.startDate||'', dob:e.dob||'', active:e.active!==false, color:AVATAR_COLORS[(i||0)%AVATAR_COLORS.length], department:null, nin:e.nin||'', payeTin:e.payeTin||'', nhfNumber:e.nhfNumber||'', pensionPin:e.pensionPin||'', nsitfNumber:e.nsitfNumber||'', passportPhoto:null, documents:docs };
 }
 function cloudRunToLocal(r){
-  const lines=(r.lines||[]).map(l=>({ employeeId:l.employeeId, name:l.name, role:l.role, gross:l.gross, bank:l.bank||'', account:l.account||'', monthlyPAYE:l.monthlyPAYE, pensionEmployee:l.pensionEmployee, pensionEmployer:l.pensionEmployer, nhf:l.nhf, nsitf:Math.round((l.gross||0)*0.01), net:l.net }));
-  return { id:r.id, period:r.period, createdAt:r.createdAt, lines, status:r.status||'paid' };
+  const lines=(r.lines||[]).map(l=>({ employeeId:l.employeeId, name:l.name, role:l.role, gross:Number(l.gross)||0, bank:l.bank||'', account:l.account||'', monthlyPAYE:l.monthlyPAYE, pensionEmployee:l.pensionEmployee, pensionEmployer:l.pensionEmployer, nhf:l.nhf, nsitf:l.nsitf??Math.round((l.gross||0)*0.01), otherDeductions:l.otherDeductions||0, notes:l.notes||'', net:l.net }));
+  return { id:r.id, period:r.period, createdAt:r.createdAt, lines, status:r.status||'prepared', method:r.method||'automatic-estimate', approvedAt:r.approvedAt||null };
 }
 function nextPeriod(runs){
   const now=new Date();
