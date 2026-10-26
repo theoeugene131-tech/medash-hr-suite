@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { nanoid } from "nanoid";
 import { db } from "../lib/db.js";
-import { estimateDeductions } from "../lib/tax.js";
 import { requireAuth, requireAdmin, AuthedRequest } from "../middleware/requireAuth.js";
 
 export const payrollRouter = Router();
@@ -83,35 +82,8 @@ payrollRouter.post("/manual", requireAdmin, async (req: AuthedRequest, res) => {
   return res.status(201).json(run);
 });
 
-payrollRouter.post("/run", requireAdmin, async (req: AuthedRequest, res) => {
-  const company = await db.find("companies", req.auth!.companyId);
-  const countryCode = company?.countryCode || "NG";
-  if (countryCode !== "NG") {
-    return res.status(400).json({ error: countryCode === "GB" ? "Automated UK payroll calculations are not available yet. Use Manual payroll entry with figures verified for UK rules." : "Automated US payroll calculations are not available yet. Use Manual payroll entry with figures verified for federal and applicable state/local rules." });
-  }
-  const employees = (await db.table("employees", req.auth!.companyId)).filter((employee: any) => employee.active);
-  if (!employees.length) return res.status(400).json({ error: "No active employees to include." });
-  const runs = await db.table("payrollRuns", req.auth!.companyId);
-  const last = runs.length ? String(runs[runs.length - 1].period || "") : "";
-  const now = new Date();
-  let period = last;
-  if (!period) period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  else {
-    const [year, month] = period.split("-").map(Number);
-    const next = new Date(year, month, 1);
-    period = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
-  }
-  if (runs.some((run: any) => run.period === period)) {
-    return res.status(409).json({ error: "A payroll run already exists for this period. Review History before creating another run." });
-  }
-  const lines = employees.map((employee: any) => ({
-    employeeId: employee.id, name: employee.name, role: employee.role,
-    gross: Number(employee.gross || 0), ...estimateDeductions(Number(employee.gross || 0))
-  }));
-  const run = {
-    id: nanoid(), companyId: req.auth!.companyId, period,
-    createdAt: new Date().toISOString(), lines, method: "automatic-estimate", status: "prepared"
-  };
-  await db.insert("payrollRuns", run);
-  return res.status(201).json(run);
+payrollRouter.post("/run", requireAdmin, async (_req: AuthedRequest, res) => {
+  return res.status(410).json({
+    error: "Automated payroll estimates are temporarily disabled until current jurisdiction-specific rules are professionally validated. Use manual payroll entry or CSV import with figures checked by your payroll provider."
+  });
 });

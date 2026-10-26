@@ -1,6 +1,7 @@
 "use client";
 
 import { CompanyAPI } from "@/lib/api";
+import { loadState, saveState } from "@/lib/store";
 
 const REGIONS = {
   NG: {
@@ -8,9 +9,9 @@ const REGIONS = {
     currency: "NGN",
     locale: "en-NG",
     timezone: "Africa/Lagos",
-    payrollLevel: "Estimate + manual entry",
-    payroll: "A Nigeria-only payroll estimate is available, alongside manual payroll entry and CSV import. Check all tax and contribution figures with a qualified payroll professional for the relevant tax year before paying staff or filing returns.",
-    available: ["Manual payroll entry and CSV import", "Nigeria payroll estimate (review required)", "Internal HR records, documents, leave, attendance, training and reports"],
+    payrollLevel: "Manual entry / CSV only — estimate paused",
+    payroll: "Automated Nigerian payroll estimates are paused because the current tax-year rules require professional validation. You can enter or import figures checked by a qualified payroll provider; do not rely on Medash for statutory calculations or filings.",
+    available: ["Manual payroll entry and CSV import", "Internal HR records, documents, leave, attendance, training and reports"],
     unavailable: ["Certified statutory payroll or tax filing", "Automatic bank payments or statutory remittances"],
   },
   GB: {
@@ -58,6 +59,21 @@ export default function CountrySettings({ state, update, showToast, cloudMode = 
         if (showToast) showToast(error.message || "Could not save company region to the cloud.");
         return;
       }
+    }
+    // Update the persisted regional preferences immediately as well as React state.
+    // formatMoney/formatDate read these preferences from localStorage; writing only
+    // in a React effect caused a one-render delay where payroll still used the old locale.
+    try {
+      const saved = loadState() || {};
+      saveState({
+        ...saved,
+        countryCode: nextCode,
+        currency: next.currency,
+        locale: next.locale,
+        timezone: next.timezone,
+      });
+    } catch {
+      // React state below still updates if browser storage is unavailable.
     }
     update((s) => {
       s.countryCode = nextCode;
@@ -134,7 +150,7 @@ export default function CountrySettings({ state, update, showToast, cloudMode = 
       </div>
 
       <p style={{ color: "var(--muted)", fontSize: 11, lineHeight: 1.7, marginTop: 18 }}>
-        Currency, date formatting and time-zone preferences are saved to the company settings. Some screens may still need review for regional display consistency. Payroll figures should be verified by a qualified local professional; the app does not submit tax returns, statutory filings or payments.
+        Currency, date formatting and time-zone preferences are saved to the company settings. Statutory payroll calculations are currently paused in all three countries. Payroll figures must be checked by a qualified local professional; the app does not submit tax returns, statutory filings or payments.
       </p>
     </section>
   );
