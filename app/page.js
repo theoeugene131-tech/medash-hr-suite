@@ -30,9 +30,9 @@ const TAB_LABELS = {
 };
 const COUNTRY_LABELS = { NG:'Nigeria', GB:'United Kingdom', UK:'United Kingdom', US:'United States' };
 const NAV_GROUPS = [
-  { key:'overview', label:'Overview', description:'Company snapshot and key HR indicators.', tabs:['overview'] },
-  { key:'hr', label:'HR Workspace', description:'Manage people, documents, leave, attendance, training, hiring and reviews.', tabs:['team','docs','regulatory','training','leave','attendance','org','reviews','hiring','myprofile'] },
-  { key:'payroll', label:'Payroll & Compliance', description:'Prepare payroll, review past runs, track compliance and set your country.', tabs:['runpayroll','history','compliance','reports','settings'] }
+  { key:'overview', label:'Overview', description:'See the company snapshot, team size, monthly cost, next payroll period and open compliance items.', tabs:['overview'] },
+  { key:'hr', label:'HR Workspace', description:'Manage team records, onboarding documents, internal regulatory checklists, training, leave, attendance, org chart, hiring, reviews and employee profiles.', tabs:['team','docs','regulatory','training','leave','attendance','org','reviews','hiring','myprofile'] },
+  { key:'payroll', label:'Payroll & Compliance', description:'Enter or import payroll, review payroll history, monitor compliance, view reports and set your country. Automatic estimates are Nigeria-only.', tabs:['runpayroll','history','compliance','reports','settings'] }
 ];
 function visibleTabs(role){
   if(role==='employee') return ['myprofile','training','leave','attendance'];
@@ -437,9 +437,10 @@ export default function Page(){
           </form>
           <div style={{marginTop:14,display:'flex',gap:8,flexWrap:'wrap'}}>
             <a href="https://selar.com/5w877x1957" target="_blank" rel="noreferrer" style={{fontSize:12,background:'#201526',color:'#fff',padding:'8px 12px',borderRadius:6,textDecoration:'none'}}>Buy on Selar</a>
-            <a href="?demo=1" style={{fontSize:12,border:'1px solid rgba(32,21,38,0.2)',padding:'8px 12px',borderRadius:6,textDecoration:'none',color:'#201526'}}>Continue as demo (owner test)</a>
+            <button onClick={()=>{ try{const old=localStorage.getItem('medash_state_v1'); sessionStorage.setItem('medash_owner_demo_backup',old===null?'__EMPTY__':old);}catch{} clearSession(); location.href='?demo=1&local=1&freshDemo=1'; }} style={{fontSize:12,border:'1px solid #E2735B',padding:'9px 12px',borderRadius:6,textDecoration:'none',background:'#E2735B',color:'#fff',fontWeight:700,cursor:'pointer'}}>Owner demo login · sample data</button>
             <button onClick={()=>{ setLicenseKey(''); clearLicense(); }} style={{fontSize:12,background:'transparent',border:'1px solid rgba(32,21,38,0.2)',padding:'8px 12px',borderRadius:6,cursor:'pointer'}}>Clear</button>
           </div>
+          <p style={{fontSize:11,opacity:0.7,marginTop:14}}>Demo uses fictional sample data in this browser only; it does not sign you into a real company or change cloud records.</p>
           <p style={{fontSize:11,opacity:0.55,marginTop:14}}>Developed by <b>Next Level Global</b>. Selar checkout is available; automatic payment verification is not enabled yet, so license activation must be handled manually.</p>
         </div>
       </div>
