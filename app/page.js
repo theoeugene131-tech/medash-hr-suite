@@ -379,8 +379,7 @@ export default function Page(){
     window.addEventListener('online',updateOnline);
     window.addEventListener('offline',updateOnline);
     if('serviceWorker' in navigator){ navigator.serviceWorker.register('/sw.js').catch(()=>{}); }
-    // SaaS license check — Selar. Allow bypass via ?license=MEDASH-xxx or ?demo=1 for owner testing
-    const params=new URLSearchParams(window.location.search);
+    // SaaS license check — reuse the URLSearchParams object created above.
     const urlKey=params.get('license');
     const demoBypass=params.get('demo')==='1';
     if(demoBypass){ setLicenseOk(true); setLicenseChecking(false); }
