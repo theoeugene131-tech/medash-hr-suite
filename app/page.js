@@ -1069,7 +1069,7 @@ function ManualPayroll({state,update,showToast}){
     }
     row.push(cell.trim());if(row.some(v=>v!==''))records.push(row);
     if(records.length<2) throw new Error('CSV needs a header row and at least one payroll row.');
-    const headers=records[0].map(h=>h.toLowerCase().replace(/[\\s_-]+/g,''));
+    const headers=records[0].map(h=>h.toLowerCase().replace(/[\s_-]+/g,''));
     const index=(...names)=>headers.findIndex(h=>names.includes(h));
     const employeeIndex=index('employeeid','id','employee','employeename','name');
     const fields=['gross','monthlyPAYE','pensionEmployee','pensionEmployer','nhf','nsitf','otherDeductions','net','notes'];
@@ -1092,7 +1092,7 @@ function ManualPayroll({state,update,showToast}){
   async function importFile(file){
     if(!file) return;
     setCsvError('');
-    if(!/\\.csv$/i.test(file.name)){setCsvError('Please upload a CSV file. Save Excel workbooks as CSV UTF-8 first.');return;}
+    if(!/\.csv$/i.test(file.name)){setCsvError('Please upload a CSV file. Save Excel workbooks as CSV UTF-8 first.');return;}
     try{
       const parsed=parseCsv(await file.text());
       setRows(parsed);setFileName(file.name);
@@ -1100,7 +1100,7 @@ function ManualPayroll({state,update,showToast}){
     }catch(err){setCsvError(err.message||'Could not read this CSV file.');}
   }
   async function saveManual(){
-    if(!/^\\d{4}-(0[1-9]|1[0-2])$/.test(period)){showToast('Enter the period as YYYY-MM.');return;}
+    if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)){showToast('Enter the period as YYYY-MM.');return;}
     if(!rows.length){showToast('Add at least one payroll row.');return;}
     const seen=new Set();
     for(const row of rows){
@@ -1141,7 +1141,7 @@ function ManualPayroll({state,update,showToast}){
         <label style={{fontSize:12,display:'grid',gap:6}}>Payroll period<input type="month" value={period} onChange={e=>setPeriod(e.target.value)} style={{padding:9,borderRadius:6,border:'1px solid var(--line)',background:'var(--paper)',color:'var(--ink)'}} /></label>
         <label style={{fontSize:12,display:'grid',gap:6}}>Upload payroll CSV<input type="file" accept=".csv,text/csv" onChange={e=>importFile(e.target.files?.[0])} style={{fontSize:12,maxWidth:260}} /></label>
         {fileName&&<span style={{fontSize:12,color:'var(--teal)'}}>Imported: {fileName}</span>}
-        <button className="btn" onClick={()=>{const headers=['employeeId','gross','monthlyPAYE','pensionEmployee','pensionEmployer','nhf','nsitf','otherDeductions','net','notes'];const csv=[headers.join(','),...active.map(e=>[e.id,e.gross||'', '', '', '', '', '', '', '', ''].join(','))].join('\\n');const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));const a=document.createElement('a');a.href=url;a.download='medash-payroll-template.csv';a.click();URL.revokeObjectURL(url);}}>Download CSV template</button>
+        <button className="btn" onClick={()=>{const headers=['employeeId','gross','monthlyPAYE','pensionEmployee','pensionEmployer','nhf','nsitf','otherDeductions','net','notes'];const csv=[headers.join(','),...active.map(e=>[e.id,e.gross||'', '', '', '', '', '', '', '', ''].join(','))].join('\n');const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));const a=document.createElement('a');a.href=url;a.download='medash-payroll-template.csv';a.click();URL.revokeObjectURL(url);}}>Download CSV template</button>
       </div>
       {csvError&&<p role="alert" style={{color:'var(--coral)',fontSize:12,marginBottom:0}}>{csvError}</p>}
       <p style={{fontSize:11.5,color:'var(--muted)',lineHeight:1.6,marginBottom:0}}>CSV columns: employeeId (or exact employee name), gross, monthlyPAYE, pensionEmployee, pensionEmployer, nhf, nsitf, otherDeductions, net, notes. Net pay may be left blank to calculate gross minus entered employee deductions. Use CSV UTF-8; review imported data before saving.</p>
