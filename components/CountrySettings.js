@@ -1,6 +1,7 @@
 "use client";
 
 import { CompanyAPI } from "@/lib/api";
+import { loadState, saveState } from "@/lib/store";
 
 const REGIONS = {
   NG: {
@@ -58,6 +59,21 @@ export default function CountrySettings({ state, update, showToast, cloudMode = 
         if (showToast) showToast(error.message || "Could not save company region to the cloud.");
         return;
       }
+    }
+    // Update the persisted regional preferences immediately as well as React state.
+    // formatMoney/formatDate read these preferences from localStorage; writing only
+    // in a React effect caused a one-render delay where payroll still used the old locale.
+    try {
+      const saved = loadState() || {};
+      saveState({
+        ...saved,
+        countryCode: nextCode,
+        currency: next.currency,
+        locale: next.locale,
+        timezone: next.timezone,
+      });
+    } catch {
+      // React state below still updates if browser storage is unavailable.
     }
     update((s) => {
       s.countryCode = nextCode;
