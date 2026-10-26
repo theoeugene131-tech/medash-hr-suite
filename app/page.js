@@ -16,11 +16,11 @@ const DOC_TYPES = [
   {key:'deployment', label:'Deployment to Unit', category:'Onboarding', required:true},
   {key:'jd', label:'Job Description', category:'Onboarding', required:true},
   {key:'medicals', label:'Medicals', category:'Onboarding', required:true},
-  {key:'nin', label:'NIN Slip', category:'IDs & Statutory', required:true},
-  {key:'paye_tin', label:'PAYE / TIN', category:'IDs & Statutory', required:true},
-  {key:'nhf', label:'NHF Number', category:'IDs & Statutory', required:false},
-  {key:'pension', label:'Pension PIN', category:'IDs & Statutory', required:true},
-  {key:'nsitf', label:'NSITF Reg', category:'IDs & Statutory', required:false},
+  {key:'nin', label:'Government ID / identity document', category:'IDs & Statutory', required:false},
+  {key:'paye_tin', label:'Tax / withholding reference', category:'IDs & Statutory', required:false},
+  {key:'nhf', label:'Local statutory scheme reference', category:'IDs & Statutory', required:false},
+  {key:'pension', label:'Pension / retirement scheme reference', category:'IDs & Statutory', required:false},
+  {key:'nsitf', label:'Employer insurance / statutory registration', category:'IDs & Statutory', required:false},
   {key:'quarterly', label:'Quarterly Appraisal', category:'Appraisals', required:false},
   {key:'annual', label:'Annual Appraisal', category:'Appraisals', required:false},
 ];
@@ -31,8 +31,8 @@ const TAB_LABELS = {
 const COUNTRY_LABELS = { NG:'Nigeria', GB:'United Kingdom', UK:'United Kingdom', US:'United States' };
 const NAV_GROUPS = [
   { key:'overview', label:'Overview', description:'See the company snapshot, team size, monthly cost, next payroll period and open compliance items.', tabs:['overview'] },
-  { key:'hr', label:'HR Workspace', description:'Manage team records, onboarding documents, internal regulatory checklists, training, leave, attendance, org chart, hiring, reviews and employee profiles.', tabs:['team','docs','regulatory','training','leave','attendance','org','reviews','hiring','myprofile'] },
-  { key:'payroll', label:'Payroll & Compliance', description:'Enter or import payroll, review payroll history and reports, and set your country. Statutory estimates are paused pending validation.', tabs:['runpayroll','history','compliance','reports','settings'] }
+  { key:'hr', label:'HR Workspace', description:'Manage team records, onboarding documents, internal regulatory checklists, training, leave, attendance, org chart, hiring, reviews and employee profiles.', tabs:['team','docs','training','leave','attendance','org','reviews','hiring','myprofile'] },
+  { key:'payroll', label:'Payroll & Compliance', description:'Enter or import payroll, review payroll history and reports, and set your country. Statutory estimates are paused pending validation.', tabs:['runpayroll','history','regulatory','compliance','reports','settings'] }
 ];
 function visibleTabs(role){
   if(role==='employee') return ['myprofile','training','leave','attendance'];
@@ -680,7 +680,7 @@ function Documents({state,update,setModal,showToast,docFilter,setDocFilter}){
     }}>Export CSV</button></div>
     <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
       {cats.map(c=><button key={c} onClick={()=>setDocFilter(c)} style={{padding:'6px 12px',borderRadius:20,fontSize:12,border:'1px solid var(--line)',background:docFilter===c?'var(--paper)':'transparent',color:docFilter===c?'var(--ink)':'var(--muted)',cursor:'pointer'}}>{c}</button>)}
-      <span style={{marginLeft:'auto',fontSize:12,color:'var(--muted)'}}>Click row to edit staff docs · IDs (NIN/PAYE/NHF) editable inline</span>
+      <span style={{marginLeft:'auto',fontSize:12,color:'var(--muted)'}}>Click a row to edit staff documents. Sensitive local tax/identity fields are only shown for Nigeria.</span>
     </div>
     <div style={{overflowX:'auto',background:'#EDEEF2',borderRadius:8,padding:12}}>
       <table style={{width:'100%',borderCollapse:'collapse',color:'#201526',fontSize:12, minWidth:900}}>
@@ -719,6 +719,12 @@ function Documents({state,update,setModal,showToast,docFilter,setDocFilter}){
   </>);
 }
 function Regulatory({state,update}){
+  if(state.countryCode!=='NG') return <>
+    <div className="panel-head"><div><h2>Regulatory Payables</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Jurisdiction-specific statutory calculations</p></div></div>
+    <div style={{color:'var(--muted)',padding:22,background:'var(--bg-2)',borderRadius:8,lineHeight:1.7}}>
+      Regulatory payables for {COUNTRY_LABELS[state.countryCode]||'this jurisdiction'} are not configured. This page will not calculate or display Nigerian PAYE, pension, NHF or NSITF totals for UK or US companies. Use verified manual payroll figures and consult a qualified local payroll professional.
+    </div>
+  </>;
   if(!state.runs.length) return <><div className="panel-head"><div><h2>Regulatory Payables</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Aggregated remittances due per period — PAYE, Pension, NHF, NSITF</p></div></div><div style={{color:'var(--muted)',textAlign:'center',padding:30}}>Run payroll to generate regulatory totals.</div></>;
   const items=[
     {key:'paye', label:'PAYE (State IRS)', color:'#E2735B'},
@@ -735,13 +741,14 @@ function Regulatory({state,update}){
   });
   const allTotals=rows.reduce((a,r)=>({paye:a.paye+r.totals.paye, pension:a.pension+r.pensionTotal, nhf:a.nhf+r.totals.nhf, nsitf:a.nsitf+r.totals.nsitf, grand:a.grand+r.grand}),{paye:0,pension:0,nhf:0,nsitf:0,grand:0});
   return (<>
-    <div className="panel-head"><div><h2>Regulatory Payables</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>All statutory remittances aggregated per payroll run — mark filed in Compliance tab</p></div>
+    <div className="panel-head"><div><h2>Nigeria internal regulatory totals</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Legacy figures from saved payroll records — not certified statutory amounts</p></div>
       <button className="btn btn-primary" onClick={()=>{
         const header=['Period','PAYE','Pension','NHF','NSITF','Grand Total','Status'].join(',');
         const csv=[header, ...rows.map(r=> [periodLabel(r.period), r.totals.paye, r.pensionTotal, r.totals.nhf, r.totals.nsitf, r.grand, r.statuses.every(s=>s==='filed')?'Filed':'Pending'].join(','))].join('\n');
         const blob=new Blob([csv],{type:'text/csv'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='regulatory-payables.csv'; a.click(); URL.revokeObjectURL(url);
       }}>Export CSV</button>
     </div>
+    <div style={{padding:12,marginBottom:14,borderRadius:8,background:'var(--bg-2)',color:'var(--muted)',fontSize:12,lineHeight:1.7}}>Internal tracking only. Nigerian tax rules changed in 2026; verify current calculations and deadlines with a qualified payroll professional before relying on these totals.</div>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:12,marginBottom:16}}>
       <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:14}}><div style={{fontSize:10,color:'var(--muted)',textTransform:'uppercase'}}>Total PAYE due</div><div style={{fontFamily:'Newsreader',fontSize:20,fontWeight:600}}>{money(allTotals.paye)}</div></div>
       <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:14}}><div style={{fontSize:10,color:'var(--muted)',textTransform:'uppercase'}}>Total Pension</div><div style={{fontFamily:'Newsreader',fontSize:20,fontWeight:600}}>{money(allTotals.pension)}</div><div style={{fontSize:11,color:'var(--muted)'}}>Ee + Er</div></div>
@@ -965,6 +972,7 @@ function Leave({state,update,setModal,showToast}){
   }
   return (<>
     <div className="panel-head"><div><h2>Leave Management</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>{isEmployee?'Your leave requests & balances':'Team leave — request, approve, track balances'}</p></div><button className="btn btn-primary" onClick={()=>setModal({type:'leave'})}>+ Request leave</button></div>
+    <p style={{fontSize:11.5,color:'var(--muted)',lineHeight:1.6,marginTop:-8}}>Leave-day amounts shown are editable company-policy defaults, not statutory entitlements. Set your organisation’s policy with local HR/legal advice for the selected jurisdiction.</p>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginBottom:14}}>
       {LEAVE_TYPES.map(t=>{
         const bal=isEmployee? balance(myId,t.key) : null;
@@ -1150,7 +1158,8 @@ function ManualPayroll({state,update,showToast}){
     }catch(err){showToast('Could not save manual payroll: '+err.message);}
     finally{setSaving(false);}
   }
-  const fields=[['gross','Gross pay'],['monthlyPAYE','Tax / PAYE'],['pensionEmployee','Employee pension'],['pensionEmployer','Employer pension'],['nhf','NHF'],['nsitf','NSITF'],['otherDeductions','Other deductions'],['net','Net pay (optional)']];
+  const isNigeria=state.countryCode==='NG';
+  const fields=[['gross','Gross pay'],['monthlyPAYE',isNigeria?'PAYE / tax':'Tax / withholding'],['pensionEmployee',isNigeria?'Employee pension':'Employee retirement contribution'],['pensionEmployer',isNigeria?'Employer pension':'Employer retirement contribution'],['nhf',isNigeria?'NHF':'Other employee statutory deduction'],['nsitf',isNigeria?'NSITF':'Employer statutory contribution'],['otherDeductions','Other deductions'],['net','Net pay (optional)']];
   return <div style={{marginBottom:28}}>
     <div className="panel-head"><div><h2>Manual payroll entry &amp; upload</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Enter verified payroll figures or import a CSV. Saving creates a draft; it does not transfer money.</p></div></div>
     <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:10,padding:18,marginBottom:12}}>
@@ -1161,7 +1170,7 @@ function ManualPayroll({state,update,showToast}){
         <button className="btn" onClick={()=>{const headers=['employeeId','gross','monthlyPAYE','pensionEmployee','pensionEmployer','nhf','nsitf','otherDeductions','net','notes'];const csv=[headers.join(','),...active.map(e=>[e.id,e.gross||'', '', '', '', '', '', '', '', ''].join(','))].join('\n');const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));const a=document.createElement('a');a.href=url;a.download='medash-payroll-template.csv';a.click();URL.revokeObjectURL(url);}}>Download CSV template</button>
       </div>
       {csvError&&<p role="alert" style={{color:'var(--coral)',fontSize:12,marginBottom:0}}>{csvError}</p>}
-      <p style={{fontSize:11.5,color:'var(--muted)',lineHeight:1.6,marginBottom:0}}>CSV columns: employeeId (or exact employee name), gross, monthlyPAYE, pensionEmployee, pensionEmployer, nhf, nsitf, otherDeductions, net, notes. Net pay may be left blank to calculate gross minus entered employee deductions. Use CSV UTF-8; review imported data before saving.</p>
+      <p style={{fontSize:11.5,color:'var(--muted)',lineHeight:1.6,marginBottom:0}}>{state.countryCode==='NG'?'CSV columns: employeeId (or exact employee name), gross, monthlyPAYE, pensionEmployee, pensionEmployer, nhf, nsitf, otherDeductions, net, notes. Net pay may be left blank to calculate gross minus entered employee deductions.':'CSV template keeps legacy column keys for compatibility: monthlyPAYE = tax/withholding, nhf = other employee statutory deduction, nsitf = employer statutory contribution. Enter only figures verified for the selected jurisdiction.'} Use CSV UTF-8 and review imported data before saving.</p>
     </div>
     {!active.length?<p style={{color:'var(--muted)'}}>Add active employees in Team first.</p>:<>
       <div style={{overflowX:'auto',border:'1px solid var(--line)',borderRadius:8}}>
