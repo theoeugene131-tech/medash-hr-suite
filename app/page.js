@@ -81,8 +81,8 @@ function cloudEmployeeToLocal(e,i){
   return { id:e.id, name:e.name, role:e.role, gross:Number(e.gross)||0, bank:e.bank||'', account:e.account||'', startDate:e.startDate||'', dob:e.dob||'', active:e.active!==false, color:AVATAR_COLORS[(i||0)%AVATAR_COLORS.length], department:null, nin:e.nin||'', payeTin:e.payeTin||'', nhfNumber:e.nhfNumber||'', pensionPin:e.pensionPin||'', nsitfNumber:e.nsitfNumber||'', passportPhoto:null, documents:docs };
 }
 function cloudRunToLocal(r){
-  const lines=(r.lines||[]).map(l=>({ employeeId:l.employeeId, name:l.name, role:l.role, gross:l.gross, bank:l.bank||'', account:l.account||'', monthlyPAYE:l.monthlyPAYE, pensionEmployee:l.pensionEmployee, pensionEmployer:l.pensionEmployer, nhf:l.nhf, nsitf:Math.round((l.gross||0)*0.01), net:l.net }));
-  return { id:r.id, period:r.period, createdAt:r.createdAt, lines, status:r.status||'paid' };
+  const lines=(r.lines||[]).map(l=>({ employeeId:l.employeeId, name:l.name, role:l.role, gross:Number(l.gross)||0, bank:l.bank||'', account:l.account||'', monthlyPAYE:l.monthlyPAYE, pensionEmployee:l.pensionEmployee, pensionEmployer:l.pensionEmployer, nhf:l.nhf, nsitf:l.nsitf??Math.round((l.gross||0)*0.01), otherDeductions:l.otherDeductions||0, notes:l.notes||'', net:l.net }));
+  return { id:r.id, period:r.period, createdAt:r.createdAt, lines, status:r.status||'prepared', method:r.method||'automatic-estimate', approvedAt:r.approvedAt||null };
 }
 function nextPeriod(runs){
   const now=new Date();
@@ -1049,25 +1049,143 @@ function Org({state,update,setModal,showToast}){
     </div>
   </>);
 }
-function RunPayroll({state,update,setCurrentTab,showToast}){
-  if(state.countryCode && state.countryCode!=='NG') return <>
-    <div className="panel-head"><div><h2>Payroll setup required</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Selected country: {state.countryCode==='GB'?'United Kingdom':'United States'}</p></div></div>
-    <div style={{border:'1px solid var(--line)',borderLeft:'4px solid var(--coral)',borderRadius:10,padding:22,background:'var(--bg-2)',maxWidth:760}}>
-      <h3 style={{margin:'0 0 10px',fontSize:16}}>Payroll is paused for this country</h3>
-      <p style={{fontSize:13,lineHeight:1.7,color:'var(--paper-dim)',margin:'0 0 12px'}}>This build only contains Nigerian payroll calculations. We have deliberately disabled payroll calculations and confirmation for {state.countryCode==='GB'?'the United Kingdom':'the United States'} so the app does not present Nigerian deductions as local tax advice.</p>
-      <p style={{fontSize:12,lineHeight:1.7,color:'var(--muted)',margin:0}}>Before enabling this country, Medash needs a validated tax-year ruleset, jurisdiction settings, statutory deductions, employer contributions, and payroll test cases.</p>
-      <button className="btn btn-primary" style={{marginTop:16}} onClick={()=>setCurrentTab('settings')}>Open Country &amp; Region settings</button>
+function ManualPayroll({state,update,showToast}){
+  const active=state.employees.filter(e=>e.active);
+  const [period,setPeriod]=useState(nextPeriod(state.runs));
+  const [rows,setRows]=useState(()=>active.map(e=>({employeeId:e.id,gross:String(e.gross??''),monthlyPAYE:'',pensionEmployee:'',pensionEmployer:'',nhf:'',nsitf:'',otherDeductions:'',net:'',notes:''})));
+  const [fileName,setFileName]=useState('');
+  const [saving,setSaving]=useState(false);
+  const [csvError,setCsvError]=useState('');
+  useEffect(()=>{if(!rows.length&&active.length)setRows(active.map(e=>({employeeId:e.id,gross:String(e.gross??''),monthlyPAYE:'',pensionEmployee:'',pensionEmployer:'',nhf:'',nsitf:'',otherDeductions:'',net:'',notes:''})));},[active.length,rows.length]);
+  function updateRow(index,key,value){ setRows(old=>old.map((row,i)=>i===index?{...row,[key]:value}:row)); }
+  function parseCsv(text){
+    const records=[]; let row=[],cell='',quoted=false;
+    for(let i=0;i<text.length;i++){
+      const ch=text[i];
+      if(ch==='"' && quoted && text[i+1]==='"'){cell+='"';i++;}
+      else if(ch==='"') quoted=!quoted;
+      else if(ch===','&&!quoted){row.push(cell.trim());cell='';}
+      else if((ch==='\n'||ch==='\r')&&!quoted){if(ch==='\r'&&text[i+1]==='\n')i++;row.push(cell.trim());if(row.some(v=>v!==''))records.push(row);row=[];cell='';}
+      else cell+=ch;
+    }
+    row.push(cell.trim());if(row.some(v=>v!==''))records.push(row);
+    if(records.length<2) throw new Error('CSV needs a header row and at least one payroll row.');
+    const headers=records[0].map(h=>h.toLowerCase().replace(/[\s_-]+/g,''));
+    const index=(...names)=>headers.findIndex(h=>names.includes(h));
+    const employeeIndex=index('employeeid','id','employee','employeename','name');
+    const fields=['gross','monthlyPAYE','pensionEmployee','pensionEmployer','nhf','nsitf','otherDeductions','net','notes'];
+    const mapped=records.slice(1).map(cells=>{
+      const raw=employeeIndex>=0?(cells[employeeIndex]||''):'';
+      const emp=active.find(e=>String(e.id)===raw || String(e.name||'').toLowerCase()===raw.toLowerCase());
+      if(!emp) throw new Error('Could not match employee "'+raw+'". Use an exact employee name or employee ID.');
+      const out={employeeId:emp.id};
+      fields.forEach(field=>{
+        const aliases={monthlyPAYE:['monthlypaye','paye','tax'],pensionEmployee:['pensionemployee','employeecontribution'],pensionEmployer:['pensionemployer','employercontribution'],otherDeductions:['otherdeductions','other'],gross:['gross','grosspay'],net:['net','netpay'],notes:['notes','note'],nhf:['nhf'],nsitf:['nsitf']};
+        const idx=index(...aliases[field]);
+        out[field]=idx>=0?(cells[idx]||''):'';
+      });
+      if(!out.gross) throw new Error('Gross pay is missing for '+emp.name+'.');
+      return out;
+    });
+    if(mapped.some((r,i)=>mapped.findIndex(x=>x.employeeId===r.employeeId)!==i)) throw new Error('CSV contains duplicate rows for an employee.');
+    return mapped;
+  }
+  async function importFile(file){
+    if(!file) return;
+    setCsvError('');
+    if(!/\.csv$/i.test(file.name)){setCsvError('Please upload a CSV file. Save Excel workbooks as CSV UTF-8 first.');return;}
+    try{
+      const parsed=parseCsv(await file.text());
+      setRows(parsed);setFileName(file.name);
+      showToast('Imported '+parsed.length+' payroll rows. Review all amounts before saving.');
+    }catch(err){setCsvError(err.message||'Could not read this CSV file.');}
+  }
+  async function saveManual(){
+    if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)){showToast('Enter the period as YYYY-MM.');return;}
+    if(!rows.length){showToast('Add at least one payroll row.');return;}
+    const seen=new Set();
+    for(const row of rows){
+      if(!row.employeeId||seen.has(row.employeeId)){showToast('Each employee must appear once. Check the imported rows.');return;}
+      seen.add(row.employeeId);
+      if(row.gross===''||!Number.isFinite(Number(row.gross))||Number(row.gross)<0){showToast('Enter a valid non-negative gross amount for every row.');return;}
+      for(const key of ['monthlyPAYE','pensionEmployee','pensionEmployer','nhf','nsitf','otherDeductions','net']){
+        if(row[key]!==''&&(!Number.isFinite(Number(row[key]))||Number(row[key])<0)){showToast('Payroll amounts must be non-negative numbers.');return;}
+      }
+    }
+    if(state.runs.some(r=>r.period===period)){showToast('A payroll run already exists for this period. Choose another period or review History.');return;}
+    setSaving(true);
+    const payload={period,lines:rows.map(r=>({...r,gross:Number(r.gross),monthlyPAYE:Number(r.monthlyPAYE||0),pensionEmployee:Number(r.pensionEmployee||0),pensionEmployer:Number(r.pensionEmployer||0),nhf:Number(r.nhf||0),nsitf:Number(r.nsitf||0),otherDeductions:Number(r.otherDeductions||0),net:r.net===''?undefined:Number(r.net)}))};
+    try{
+      let run;
+      if(getApiBase()&&getToken()){
+        run=await PayrollAPI.createManual(payload);
+      }else{
+        const lines=payload.lines.map(line=>{
+          const emp=active.find(e=>e.id===line.employeeId)||{};
+          const deductions=line.monthlyPAYE+line.pensionEmployee+line.nhf+line.otherDeductions;
+          return {...line,name:emp.name||'',role:emp.role||'',bank:emp.bank||'',account:emp.account||'',net:line.net===undefined?Math.max(0,line.gross-deductions):line.net};
+        });
+        run={id:uid(),period,createdAt:new Date().toISOString(),lines,method:'manual',status:'draft',approvedAt:null};
+      }
+      update(s=>{s.runs.push(cloudRunToLocal(run));});
+      showToast('Manual payroll saved as a draft. Review it in History before paying.');
+      setRows(active.map(e=>({employeeId:e.id,gross:String(e.gross??''),monthlyPAYE:'',pensionEmployee:'',pensionEmployer:'',nhf:'',nsitf:'',otherDeductions:'',net:'',notes:''})));
+      setFileName('');
+    }catch(err){showToast('Could not save manual payroll: '+err.message);}
+    finally{setSaving(false);}
+  }
+  const fields=[['gross','Gross pay'],['monthlyPAYE','Tax / PAYE'],['pensionEmployee','Employee pension'],['pensionEmployer','Employer pension'],['nhf','NHF'],['nsitf','NSITF'],['otherDeductions','Other deductions'],['net','Net pay (optional)']];
+  return <div style={{marginBottom:28}}>
+    <div className="panel-head"><div><h2>Manual payroll entry &amp; upload</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Enter verified payroll figures or import a CSV. Saving creates a draft; it does not transfer money.</p></div></div>
+    <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:10,padding:18,marginBottom:12}}>
+      <div style={{display:'flex',gap:14,alignItems:'end',flexWrap:'wrap'}}>
+        <label style={{fontSize:12,display:'grid',gap:6}}>Payroll period<input type="month" value={period} onChange={e=>setPeriod(e.target.value)} style={{padding:9,borderRadius:6,border:'1px solid var(--line)',background:'var(--paper)',color:'var(--ink)'}} /></label>
+        <label style={{fontSize:12,display:'grid',gap:6}}>Upload payroll CSV<input type="file" accept=".csv,text/csv" onChange={e=>importFile(e.target.files?.[0])} style={{fontSize:12,maxWidth:260}} /></label>
+        {fileName&&<span style={{fontSize:12,color:'var(--teal)'}}>Imported: {fileName}</span>}
+        <button className="btn" onClick={()=>{const headers=['employeeId','gross','monthlyPAYE','pensionEmployee','pensionEmployer','nhf','nsitf','otherDeductions','net','notes'];const csv=[headers.join(','),...active.map(e=>[e.id,e.gross||'', '', '', '', '', '', '', '', ''].join(','))].join('\n');const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));const a=document.createElement('a');a.href=url;a.download='medash-payroll-template.csv';a.click();URL.revokeObjectURL(url);}}>Download CSV template</button>
+      </div>
+      {csvError&&<p role="alert" style={{color:'var(--coral)',fontSize:12,marginBottom:0}}>{csvError}</p>}
+      <p style={{fontSize:11.5,color:'var(--muted)',lineHeight:1.6,marginBottom:0}}>CSV columns: employeeId (or exact employee name), gross, monthlyPAYE, pensionEmployee, pensionEmployer, nhf, nsitf, otherDeductions, net, notes. Net pay may be left blank to calculate gross minus entered employee deductions. Use CSV UTF-8; review imported data before saving.</p>
     </div>
+    {!active.length?<p style={{color:'var(--muted)'}}>Add active employees in Team first.</p>:<>
+      <div style={{overflowX:'auto',border:'1px solid var(--line)',borderRadius:8}}>
+        <table style={{width:'100%',minWidth:920,borderCollapse:'collapse',fontSize:12}}>
+          <thead><tr>{['Employee',...fields.map(f=>f[1])].map(label=><th key={label} style={{textAlign:'left',padding:9,background:'var(--bg-2)',borderBottom:'1px solid var(--line)',whiteSpace:'nowrap'}}>{label}</th>)}</tr></thead>
+          <tbody>{rows.map((row,i)=>{const emp=active.find(e=>e.id===row.employeeId);return <tr key={row.employeeId||i}>
+            <td style={{padding:8,borderBottom:'1px solid var(--line)',whiteSpace:'nowrap'}}>{emp?.name||'Unknown employee'}</td>
+            {fields.map(([key,label])=><td key={key} style={{padding:5,borderBottom:'1px solid var(--line)'}}><input aria-label={emp?.name+' '+label} type="number" min="0" step="0.01" value={row[key]??''} onChange={e=>updateRow(i,key,e.target.value)} style={{width:108,padding:7,border:'1px solid var(--line)',borderRadius:5,background:'var(--paper)',color:'var(--ink)'}} /></td>)}
+          </tr>})}</tbody>
+        </table>
+      </div>
+      <div style={{display:'flex',gap:10,flexWrap:'wrap',marginTop:12}}>
+        <button className="btn btn-primary" disabled={saving} onClick={saveManual}>{saving?'Saving…':'Save manual payroll draft'}</button>
+        <button className="btn" onClick={()=>setRows(active.map(e=>({employeeId:e.id,gross:String(e.gross??''),monthlyPAYE:'',pensionEmployee:'',pensionEmployer:'',nhf:'',nsitf:'',otherDeductions:'',net:'',notes:''})))}>Reset to employee salaries</button>
+      </div>
+    </>}
+  </div>;
+}
+function RunPayroll({state,update,setCurrentTab,showToast}){
+  const manual = <ManualPayroll state={state} update={update} showToast={showToast} />;
+  if(state.countryCode && state.countryCode!=='NG') return <>
+    <div className="panel-head"><div><h2>Payroll setup</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Selected country: {state.countryCode==='GB'?'United Kingdom':'United States'}</p></div></div>
+    <div style={{border:'1px solid var(--line)',borderLeft:'4px solid var(--coral)',borderRadius:10,padding:22,background:'var(--bg-2)',maxWidth:760,marginBottom:24}}>
+      <h3 style={{margin:'0 0 10px',fontSize:16}}>Automated statutory calculations are not enabled yet</h3>
+      <p style={{fontSize:13,lineHeight:1.7,color:'var(--paper-dim)',margin:'0 0 12px'}}>Use manual entry or CSV upload for payroll figures checked by your accountant or payroll provider. Medash will not apply Nigerian deductions to UK or US employees.</p>
+      <p style={{fontSize:12,lineHeight:1.7,color:'var(--muted)',margin:0}}>UK tax, National Insurance and pension rules, or US federal/state/local taxes and payroll contributions, still need jurisdiction-specific implementation and testing.</p>
+      <button className="btn" style={{marginTop:16}} onClick={()=>setCurrentTab('settings')}>Open Country &amp; Region settings</button>
+    </div>
+    {manual}
   </>;
   const period=nextPeriod(state.runs);
   const active=state.employees.filter(e=>e.active);
-  if(!active.length) return <><div className="panel-head"><div><h2>Run payroll</h2></div></div><div style={{color:'var(--muted)',textAlign:'center',padding:30}}>Add at least one active teammate before running payroll.</div></>;
+  if(!active.length) return <>{manual}<div style={{color:'var(--muted)',textAlign:'center',padding:30}}>Add at least one active teammate before running automated estimate payroll.</div></>;
   const lines=active.map(e=>({emp:e,...estimateDeductions(e.gross)}));
   const total=lines.reduce((s,l)=>s+l.emp.gross+l.pensionEmployer,0);
   const netTotal=lines.reduce((s,l)=>s+l.net,0);
   const scheduleLines=active.map(e=>{ const d=estimateDeductions(e.gross); return {employeeId:e.id,name:e.name,role:e.role,gross:e.gross,bank:e.bank,account:e.account,...d}; });
   return (<>
-    <div className="panel-head"><div><h2>Run payroll — {periodLabel(period)}</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Review before confirming. This will pay {active.length} active teammates.</p></div>
+    {manual}
+    <div className="panel-head"><div><h2>Automated payroll estimate — {periodLabel(period)}</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Nigeria only. Review calculations carefully; this is not a certified statutory payroll engine.</p></div>
       <div style={{display:'flex',gap:8}}><button className="btn" style={{background:'#fff',color:'#201526',border:'1px solid #ddd'}} onClick={()=>printSchedule({companyName: state.companyName, period, lines: scheduleLines})}>🖨 Printable schedule</button></div>
     </div>
     <div className="run-row" style={{cursor:'default'}}>
@@ -1075,7 +1193,7 @@ function RunPayroll({state,update,setCurrentTab,showToast}){
       {lines.map(l=><div key={l.emp.id} style={{display:'grid',gridTemplateColumns:'1.2fr 1fr 1.1fr',gap:8,alignItems:'center',fontSize:12.5,padding:'8px 0',borderBottom:'1px solid rgba(32,21,38,0.05)'}}><span>{l.emp.name}<span style={{opacity:0.55}}> — {l.emp.role}</span></span><span style={{fontFamily:'IBM Plex Mono',fontSize:12}}>{l.emp.bank || '—'} · {l.emp.account || '—'}</span><span style={{fontFamily:'IBM Plex Mono',fontWeight:600,textAlign:'right'}}>{money(l.net)}</span></div>)}
       <div style={{display:'flex',justifyContent:'space-between',fontWeight:700,borderTop:'1px solid rgba(32,21,38,0.15)',marginTop:6,paddingTop:12,fontSize:13}}><span>Total net pay</span><span style={{fontFamily:'IBM Plex Mono'}}>{money(netTotal)}</span></div>
       <div style={{display:'flex',justifyContent:'space-between',fontSize:12.5,padding:'6px 0'}}><span>Total cost to company (incl. employer pension)</span><span style={{fontFamily:'IBM Plex Mono',fontWeight:600}}>{money(total)}</span></div>
-      <div style={{fontSize:11,color:'rgba(32,21,38,0.55)',marginTop:6}}>Edit bank/account in Team → Edit. Pays to listed accounts.</div>
+      <div style={{fontSize:11,color:'rgba(32,21,38,0.55)',marginTop:6}}>This estimate does not initiate a bank transfer.</div>
     </div>
     <div style={{display:'flex',gap:10,marginTop:16,flexWrap:'wrap'}}>
       <button className="btn btn-primary" onClick={async ()=>{
@@ -1084,17 +1202,18 @@ function RunPayroll({state,update,setCurrentTab,showToast}){
             const run=await PayrollAPI.run();
             const local=cloudRunToLocal(run);
             update(s=>{ s.runs.push(local); });
-            showToast(`Payroll for ${periodLabel(local.period)} confirmed — server-computed ✓`);
+            showToast(`Payroll estimate for ${periodLabel(local.period)} saved — review before payment.`);
           }catch(err){ showToast('Cloud payroll failed: '+err.message); return; }
         } else {
+          if(state.runs.some(r=>r.period===period)){showToast('A payroll run already exists for this period. Review History first.');return;}
           update(s=>{
             const lines2=active.map(e=>{ const d=estimateDeductions(e.gross); return {employeeId:e.id,name:e.name,role:e.role,gross:e.gross, bank:e.bank, account:e.account, ...d}; });
-            s.runs.push({id:uid(),period,createdAt:new Date().toISOString(),lines:lines2,status:'paid'});
+            s.runs.push({id:uid(),period,createdAt:new Date().toISOString(),lines:lines2,status:'prepared',method:'automatic-estimate'});
           });
-          showToast(`Payroll for ${periodLabel(period)} confirmed — works offline too`);
+          showToast(`Payroll estimate for ${periodLabel(period)} saved — review before payment.`);
         }
         setCurrentTab('history');
-      }}>Confirm & pay {periodLabel(period)}{getApiBase() && getToken()?' ☁':''}</button>
+      }}>Save estimate for {periodLabel(period)}{getApiBase() && getToken()?' ☁':''}</button>
       <button className="btn" style={{background:'#EDEEF2',color:'#201526'}} onClick={()=>printSchedule({companyName: state.companyName, period, lines: scheduleLines})}>🖨 Print payment schedule for Finance/CEO</button>
     </div>
   </>);
