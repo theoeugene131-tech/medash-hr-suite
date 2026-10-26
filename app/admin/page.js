@@ -18,6 +18,7 @@ export default function PlatformAdminPage() {
   async function request(path, method = "GET", body) {
     const response = await fetch(path, {
       method,
+      cache: "no-store",
       headers: {
         "Content-Type": "application/json",
         "x-admin-activation-secret": secret,
