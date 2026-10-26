@@ -25,9 +25,15 @@ const DOC_TYPES = [
   {key:'annual', label:'Annual Appraisal', category:'Appraisals', required:false},
 ];
 const TAB_LABELS = {
-  overview:'Overview', team:'Team', docs:'Documents', regulatory:'Regulatory', training:'Training', leave:'Leave', attendance:'Attendance', org:'Org Chart', runpayroll:'Run payroll', history:'History',
-  compliance:'Compliance', reviews:'Reviews', hiring:'Hiring', reports:'Reports', myprofile:'My profile', settings:'Country & Region'
+  overview:'Overview', team:'Team', docs:'Documents', regulatory:'Regulatory', training:'Training', leave:'Leave', attendance:'Attendance', org:'Org Chart', runpayroll:'Run payroll', history:'Payroll history',
+  compliance:'Compliance', reviews:'Performance reviews', hiring:'Hiring', reports:'Reports', myprofile:'My profile', settings:'Country & Region'
 };
+const COUNTRY_LABELS = { NG:'Nigeria', GB:'United Kingdom', UK:'United Kingdom', US:'United States' };
+const NAV_GROUPS = [
+  { key:'overview', label:'Overview', tabs:['overview'] },
+  { key:'hr', label:'HR Workspace', tabs:['team','docs','regulatory','training','leave','attendance','org','reviews','hiring','myprofile'] },
+  { key:'payroll', label:'Payroll & Compliance', tabs:['runpayroll','history','compliance','reports','settings'] }
+];
 function visibleTabs(role){
   if(role==='employee') return ['myprofile','training','leave','attendance'];
   if(role==='admin') return ['overview','team','docs','regulatory','training','leave','attendance','org','runpayroll','history','compliance','reviews','hiring','settings'];
@@ -495,6 +501,7 @@ export default function Page(){
             <div style={{display:'flex',alignItems:'center',gap:8}}>
               <h1 style={{fontFamily:'Newsreader, serif', fontSize:22, fontWeight:600, fontStyle:'italic'}}>Medash HR Suite</h1>
               <span style={{fontSize:10,background:'rgba(237,238,242,0.08)',border:'1px solid var(--line)',padding:'2px 6px',borderRadius:20,color:'var(--muted)'}}>{state.companyName || '—'}</span>
+              <span aria-label="Active jurisdiction" title="Active jurisdiction for regional settings" style={{fontSize:11,background:'rgba(226,115,91,0.16)',border:'1px solid rgba(226,115,91,0.65)',padding:'5px 9px',borderRadius:20,color:'var(--paper)',fontWeight:700,whiteSpace:'nowrap'}}>🌍 Jurisdiction: {COUNTRY_LABELS[state.countryCode] || state.countryCode || 'Not set'}</span>
             </div>
             <p style={{fontSize:11.5, color:'var(--muted)', marginTop:2}}>Payroll, compliance & HR for teams of 5–20</p>
             <div style={{marginTop:8,display:'flex',gap:6,alignItems:'center'}}>
@@ -543,8 +550,18 @@ export default function Page(){
         </div>
       </header>
 
-      <nav className="tabs">
-        {tabs.map(t=><button key={t} className={`tab-btn ${currentTab===t?'active':''}`} onClick={()=>setCurrentTab(t)}>{TAB_LABELS[t]}</button>)}
+      <nav className="tabs" aria-label="Main navigation" style={{alignItems:'center',flexWrap:'wrap',gap:8,paddingTop:6,paddingBottom:6}}>
+        {NAV_GROUPS.filter(group=>group.tabs.some(t=>tabs.includes(t))).map(group=>{
+          const groupTabs=group.tabs.filter(t=>tabs.includes(t));
+          const selected=groupTabs.includes(currentTab);
+          return <button key={group.key} className={`tab-btn ${selected?'active':''}`} onClick={()=>setCurrentTab(groupTabs.includes(currentTab)?currentTab:groupTabs[0])} style={{border: selected?'1px solid var(--coral)':'1px solid var(--line)',borderRadius:7,padding:'10px 14px',background:selected?'rgba(226,115,91,0.12)':'transparent'}}>{group.label}</button>;
+        })}
+        <label style={{display:'flex',alignItems:'center',gap:8,marginLeft:'auto',fontSize:11,color:'var(--muted)',whiteSpace:'nowrap'}}>
+          Go to section
+          <select aria-label="Go to section" value={currentTab} onChange={e=>setCurrentTab(e.target.value)} style={{background:'var(--bg-2)',color:'var(--paper)',border:'1px solid var(--line)',borderRadius:6,padding:'9px 10px',fontSize:12,maxWidth:'min(48vw,260px)'}}>
+            {tabs.map(t=><option key={t} value={t}>{TAB_LABELS[t]}</option>)}
+          </select>
+        </label>
       </nav>
 
       <main>
