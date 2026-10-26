@@ -655,7 +655,7 @@ function Team({state,update,setModal,showToast}){
     catch(err){ showToast('Invite failed: '+err.message); }
   }
   return (<>
-    <div className="panel-head"><div><h2>Team</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Add, edit, or click name for documents{cloudOn?' · ☁ cloud sync on':''}</p></div><div style={{display:'flex',gap:8}}><button className="btn btn-primary" onClick={()=>setModal({type:'employee',data:null})}>+ Add teammate</button></div></div>
+    <div className="panel-head"><div><h2>Team</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Add or edit teammates. Employee document files and passport photos are browser-local, not cloud-backed.{cloudOn?' · employee records sync on':''}</p></div><div style={{display:'flex',gap:8}}><button className="btn btn-primary" onClick={()=>setModal({type:'employee',data:null})}>+ Add teammate</button></div></div>
     {state.employees.length===0? <div style={{color:'var(--muted)',textAlign:'center',padding:30}}>No teammates yet.</div> :
       <div className="grid">{state.employees.map(e=>{
         const lastLine=[...state.runs].reverse().map(r=>(r.lines||[]).find(l=>l.employeeId===e.id)).find(Boolean);
@@ -672,7 +672,7 @@ function Documents({state,update,setModal,showToast,docFilter,setDocFilter}){
   const overall=state.employees.length? state.employees.reduce((s,e)=> s + DOC_TYPES.filter(dt=>e.documents?.[dt.key]).length,0) :0;
   const totalReq=state.employees.length * DOC_TYPES.length;
   return (<>
-    <div className="panel-head"><div><h2>Document repository</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Progress of staff compliance — proper order: onboarding → IDs → appraisals · {overall}/{totalReq} docs uploaded</p></div><button className="btn btn-ghost" style={{color:'var(--paper)',borderColor:'var(--line)'}} onClick={()=>{
+    <div className="panel-head"><div><h2>Document repository</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Document checklist progress · {overall}/{totalReq} items recorded. Uploaded files remain in this browser only; use sample data until secure cloud document storage is available.</p></div><button className="btn btn-ghost" style={{color:'var(--paper)',borderColor:'var(--line)'}} onClick={()=>{
       const header=['Staff',...DOC_TYPES.map(d=>d.label)].join(',');
       const rows=state.employees.map(e=> [ `"${e.name}"`, ...DOC_TYPES.map(dt=> e.documents?.[dt.key]?'✓':'' ) ].join(',')).join('\n');
       const csv=header+'\n'+rows; const blob=new Blob([csv],{type:'text/csv'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='medash-doc-compliance.csv'; a.click(); URL.revokeObjectURL(url);
