@@ -11,7 +11,7 @@ const REGIONS = {
     timezone: "Africa/Lagos",
     payrollLevel: "Manual entry / CSV only — estimate paused",
     payroll: "Automated Nigerian payroll estimates are paused because the current tax-year rules require professional validation. You can enter or import figures checked by a qualified payroll provider; do not rely on Medash for statutory calculations or filings.",
-    available: ["Manual payroll entry and CSV import", "Internal HR records, documents, leave, attendance, training and reports"],
+    available: ["Manual payroll entry and CSV import", "HR records, document checklist, leave, attendance, training and reports"],
     unavailable: ["Certified statutory payroll or tax filing", "Automatic bank payments or statutory remittances"],
   },
   GB: {
@@ -21,7 +21,7 @@ const REGIONS = {
     timezone: "Europe/London",
     payrollLevel: "Manual entry / CSV only",
     payroll: "UK statutory payroll calculation is not implemented. You can enter or import figures prepared and checked by your payroll provider, but Medash does not calculate PAYE, National Insurance, workplace pension duties, student loan deductions or RTI submissions.",
-    available: ["Manual payroll entry and CSV import", "Shared HR records, documents, leave, attendance, training and internal reports", "GBP, UK date/number format and London time-zone preference"],
+    available: ["Manual payroll entry and CSV import", "HR records, document checklist, leave, attendance, training and internal reports (document files remain browser-local)", "GBP, UK date/number format and London time-zone preference"],
     unavailable: ["Automatic UK tax / National Insurance calculations", "RTI submissions, pension filings or bank payments"],
   },
   US: {
@@ -38,11 +38,11 @@ const REGIONS = {
 
 const SHARED_FEATURES = [
   "Team and employee records",
-  "Employee documents and onboarding records",
+  "Document checklist and onboarding records (uploaded files remain browser-local)",
   "Leave and attendance tracking",
   "Training and performance reviews",
   "Hiring pipeline and organisation chart",
-  "Internal compliance tracking and reports",
+  "General HR records and activity reports",
 ];
 
 export default function CountrySettings({ state, update, showToast, cloudMode = false }) {
