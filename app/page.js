@@ -463,6 +463,7 @@ export default function Page(){
   const cloudMode=!!(cloudBase && !cloudOff() && apiUser && getToken());
   const tabs=visibleTabs(cloudMode && apiUser.role==='employee' ? 'employee' : state.currentRole);
   const activeTabs=tabs.includes(currentTab)?currentTab:tabs[0];
+  const currentGroup=NAV_GROUPS.find(group=>group.tabs.includes(activeTabs))||NAV_GROUPS[0];
   if(activeTabs!==currentTab) setCurrentTab(activeTabs);
   function update(fn){ setState(s=>{ const ns=JSON.parse(JSON.stringify(s)); fn(ns); return ns; }); }
   function showToast(m){ setToast(m); setTimeout(()=>setToast(null),2800); }
@@ -581,8 +582,8 @@ export default function Page(){
         })}
         <label style={{display:'flex',alignItems:'center',gap:8,fontSize:11,color:'var(--muted)',whiteSpace:'nowrap'}}>
           Open a page
-          <select aria-label="Open a page" value={currentTab} onChange={e=>setCurrentTab(e.target.value)} style={{background:'var(--bg-2)',color:'var(--paper)',border:'1px solid var(--line)',borderRadius:6,padding:'9px 10px',fontSize:12,maxWidth:'min(48vw,260px)'}}>
-            {tabs.map(t=><option key={t} value={t}>{TAB_LABELS[t]}</option>)}
+          <select aria-label="Open a page" value={activeTabs} onChange={e=>setCurrentTab(e.target.value)} style={{background:'var(--bg-2)',color:'var(--paper)',border:'1px solid var(--line)',borderRadius:6,padding:'9px 10px',fontSize:12,maxWidth:'min(48vw,260px)'}}>
+            {currentGroup.tabs.filter(t=>tabs.includes(t)).map(t=><option key={t} value={t}>{TAB_LABELS[t]}</option>)}
           </select>
         </label>
       </nav>
