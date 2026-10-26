@@ -31,9 +31,7 @@ const employeeSchema = z.object({
   active: z.boolean().optional().default(true),
 });
 
-// Admins see the full roster. Employees only ever see their own record —
-// this is the actual access control the old "Viewing as" dropdown didn't
-// provide (anyone could switch to "Employee" and browse any teammate's data).
+// Company scope is enforced in SQL for reads and mutations, not just in UI.
 employeesRouter.get("/", async (req: AuthedRequest, res) => {
   const all = (await db.table("employees", req.auth!.companyId)) as any[];
   if (req.auth!.role === "employee") {
@@ -69,10 +67,10 @@ employeesRouter.post("/", requireAdmin, async (req: AuthedRequest, res) => {
 });
 
 employeesRouter.patch("/:id", requireAdmin, async (req: AuthedRequest, res) => {
-  const existing = await db.find("employees", req.params.id);
-  if (!existing || existing.companyId !== req.auth!.companyId) {
-    return res.status(404).json({ error: "Employee not found" });
-  }
+  const companyId = req.auth!.companyId;
+  const existing = await db.findForCompany("employees", req.params.id, companyId);
+  if (!existing) return res.status(404).json({ error: "Employee not found" });
+
   const parsed = employeeSchema.partial().safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -80,15 +78,13 @@ employeesRouter.patch("/:id", requireAdmin, async (req: AuthedRequest, res) => {
   for (const f of SENSITIVE_FIELDS) {
     if (f in patch) patch[f] = encryptField(patch[f]);
   }
-  const updated = await db.update("employees", req.params.id, patch);
+  const updated = await db.updateForCompany("employees", req.params.id, companyId, patch);
+  if (!updated) return res.status(404).json({ error: "Employee not found" });
   res.json(toPublic(updated));
 });
 
 employeesRouter.delete("/:id", requireAdmin, async (req: AuthedRequest, res) => {
-  const existing = await db.find("employees", req.params.id);
-  if (!existing || existing.companyId !== req.auth!.companyId) {
-    return res.status(404).json({ error: "Employee not found" });
-  }
-  await db.delete("employees", req.params.id);
+  const deleted = await db.deleteForCompany("employees", req.params.id, req.auth!.companyId);
+  if (!deleted) return res.status(404).json({ error: "Employee not found" });
   res.json({ ok: true });
 });
