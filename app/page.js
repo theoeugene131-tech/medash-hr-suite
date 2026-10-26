@@ -30,8 +30,8 @@ const TAB_LABELS = {
 };
 const COUNTRY_LABELS = { NG:'Nigeria', GB:'United Kingdom', UK:'United Kingdom', US:'United States' };
 const NAV_GROUPS = [
-  { key:'overview', label:'Overview', description:'See the company snapshot, team size, monthly cost, next payroll period and open compliance items.', tabs:['overview'] },
-  { key:'hr', label:'HR Workspace', description:'Manage team records, onboarding documents, internal regulatory checklists, training, leave, attendance, org chart, hiring, reviews and employee profiles.', tabs:['team','docs','training','leave','attendance','org','reviews','hiring','myprofile'] },
+  { key:'overview', label:'Overview', description:'See the company snapshot, team size, monthly gross payroll, next payroll period and internal tracking items.', tabs:['overview'] },
+  { key:'hr', label:'HR Workspace', description:'Manage team records, onboarding documents, training, leave, attendance, org chart, hiring, reviews and employee profiles.', tabs:['team','docs','training','leave','attendance','org','reviews','hiring','myprofile'] },
   { key:'payroll', label:'Payroll & Compliance', description:'Enter or import payroll, review payroll history and reports, and set your country. Statutory estimates are paused pending validation.', tabs:['runpayroll','history','regulatory','compliance','reports','settings'] }
 ];
 function visibleTabs(role){
@@ -725,7 +725,7 @@ function Regulatory({state,update}){
       Regulatory payables for {COUNTRY_LABELS[state.countryCode]||'this jurisdiction'} are not configured. This page will not calculate or display Nigerian PAYE, pension, NHF or NSITF totals for UK or US companies. Use verified manual payroll figures and consult a qualified local payroll professional.
     </div>
   </>;
-  if(!state.runs.length) return <><div className="panel-head"><div><h2>Regulatory Payables</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Aggregated remittances due per period — PAYE, Pension, NHF, NSITF</p></div></div><div style={{color:'var(--muted)',textAlign:'center',padding:30}}>Run payroll to generate regulatory totals.</div></>;
+  if(!state.runs.length) return <><div className="panel-head"><div><h2>Regulatory Payables</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Aggregated remittances due per period — PAYE, Pension, NHF, NSITF</p></div></div><div style={{color:'var(--muted)',textAlign:'center',padding:30}}>No payroll records yet. This Nigeria-only screen is internal tracking, not certified statutory payroll advice.</div></>;
   const items=[
     {key:'paye', label:'PAYE (State IRS)', color:'#E2735B'},
     {key:'pension', label:'Pension (PenCom) — Employee + Employer', color:'#4C8577'},
