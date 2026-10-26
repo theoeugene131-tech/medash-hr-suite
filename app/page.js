@@ -1485,8 +1485,8 @@ function Modal({modal,setModal,state,update,showToast}){
           </div><button onClick={close} style={{background:'none',border:'none',cursor:'pointer',fontSize:20,opacity:0.55,height:32}}>✕</button></div>
           <div style={{height:6,background:'rgba(32,21,38,0.1)',borderRadius:6,overflow:'hidden',marginBottom:16}}><div style={{width:`${pct}%`,height:'100%',background:'var(--teal)'}}/></div>
 
-          <div style={{background:'rgba(32,21,38,0.05)',borderRadius:8,padding:14,marginBottom:16}}>
-            <div style={{fontSize:11,fontWeight:600,letterSpacing:0.06+'em',textTransform:'uppercase',opacity:0.6,marginBottom:8}}>Required IDs & Numbers</div>
+          {state.countryCode==='NG' ? <div style={{background:'rgba(32,21,38,0.05)',borderRadius:8,padding:14,marginBottom:16}}>
+            <div style={{fontSize:11,fontWeight:600,letterSpacing:0.06+'em',textTransform:'uppercase',opacity:0.6,marginBottom:8}}>Nigeria ID & statutory references (saved locally only)</div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
               <div className="field" style={{marginBottom:0}}><label>NIN (11 digits)</label><input value={ids.nin} onChange={ev=>setIds({...ids,nin:ev.target.value})} placeholder="12345678901"/></div>
               <div className="field" style={{marginBottom:0}}><label>PAYE / TIN</label><input value={ids.payeTin} onChange={ev=>setIds({...ids,payeTin:ev.target.value})} placeholder="PAYE-..."/></div>
@@ -1495,7 +1495,9 @@ function Modal({modal,setModal,state,update,showToast}){
               <div className="field" style={{marginBottom:0}}><label>NSITF Number</label><input value={ids.nsitfNumber} onChange={ev=>setIds({...ids,nsitfNumber:ev.target.value})} placeholder="NSITF-..."/></div>
               <div style={{display:'flex',alignItems:'flex-end'}}><button className="btn btn-primary btn-sm" onClick={()=>{ update(s=>{ const emp=s.employees.find(x=>x.id===e.id); emp.nin=ids.nin; emp.payeTin=ids.payeTin; emp.nhfNumber=ids.nhfNumber; emp.pensionPin=ids.pensionPin; emp.nsitfNumber=ids.nsitfNumber; }); showToast('IDs saved — offline'); }}>Save IDs</button></div>
             </div>
-          </div>
+          </div> : <div style={{background:'var(--bg-2)',borderRadius:8,padding:14,marginBottom:16,color:'var(--muted)',fontSize:12,lineHeight:1.7}}>
+            Country-specific tax and identity number fields are not enabled outside Nigeria. Do not store UK National Insurance numbers or US Social Security numbers here; secure, cloud-backed handling for these sensitive identifiers has not been implemented.
+          </div>}
 
           {Object.entries(grouped).map(([cat,docs])=> <div key={cat} style={{marginBottom:14}}>
             <div style={{fontSize:11,fontWeight:600,letterSpacing:0.06+'em',textTransform:'uppercase',opacity:0.55,marginBottom:8}}>{cat}</div>
