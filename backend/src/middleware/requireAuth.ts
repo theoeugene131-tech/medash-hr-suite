@@ -13,11 +13,29 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
   }
   const payload = verifyToken(header.slice("Bearer ".length));
   if (!payload) return res.status(401).json({ error: "Invalid or expired token" });
-  req.auth = payload;
 
   try {
-    const company = await db.find("companies", payload.companyId);
+    // A valid signature alone is not enough: the account may have been
+    // removed or its role/company changed since this token was issued.
+    const user = await db.find("users", payload.userId);
+    if (
+      !user ||
+      user.companyId !== payload.companyId ||
+      user.role !== payload.role ||
+      (user.employeeId ?? null) !== (payload.employeeId ?? null)
+    ) {
+      return res.status(401).json({ error: "Account access has changed. Please sign in again." });
+    }
+
+    const company = await db.find("companies", user.companyId);
     if (!company) return res.status(403).json({ error: "Company account could not be found." });
+    req.auth = {
+      userId: user.id,
+      companyId: user.companyId,
+      role: user.role,
+      employeeId: user.employeeId ?? null,
+    };
+
     const isCompanyStatusRead = req.method === "GET" && req.path === "/";
     const now = Date.now();
     const trialEndsAt = company.trialEndsAt ? new Date(company.trialEndsAt).getTime() : null;
@@ -29,8 +47,8 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
     }
     return next();
   } catch (error) {
-    console.error("Subscription access check failed:", error);
-    return res.status(503).json({ error: "Could not verify company access. Please try again shortly." });
+    console.error("Authentication access check failed:", error);
+    return res.status(503).json({ error: "Could not verify account access. Please try again shortly." });
   }
 }
 
