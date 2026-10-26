@@ -25,9 +25,15 @@ const DOC_TYPES = [
   {key:'annual', label:'Annual Appraisal', category:'Appraisals', required:false},
 ];
 const TAB_LABELS = {
-  overview:'Overview', team:'Team', docs:'Documents', regulatory:'Regulatory', training:'Training', leave:'Leave', attendance:'Attendance', org:'Org Chart', runpayroll:'Run payroll', history:'History',
-  compliance:'Compliance', reviews:'Reviews', hiring:'Hiring', reports:'Reports', myprofile:'My profile', settings:'Country & Region'
+  overview:'Overview', team:'Team', docs:'Documents', regulatory:'Regulatory', training:'Training', leave:'Leave', attendance:'Attendance', org:'Org Chart', runpayroll:'Run payroll', history:'Payroll history',
+  compliance:'Compliance', reviews:'Performance reviews', hiring:'Hiring', reports:'Reports', myprofile:'My profile', settings:'Country & Region'
 };
+const COUNTRY_LABELS = { NG:'Nigeria', GB:'United Kingdom', UK:'United Kingdom', US:'United States' };
+const NAV_GROUPS = [
+  { key:'overview', label:'Overview', description:'See the company snapshot, team size, monthly cost, next payroll period and open compliance items.', tabs:['overview'] },
+  { key:'hr', label:'HR Workspace', description:'Manage team records, onboarding documents, internal regulatory checklists, training, leave, attendance, org chart, hiring, reviews and employee profiles.', tabs:['team','docs','regulatory','training','leave','attendance','org','reviews','hiring','myprofile'] },
+  { key:'payroll', label:'Payroll & Compliance', description:'Enter or import payroll, review payroll history, monitor compliance, view reports and set your country. Automatic estimates are Nigeria-only.', tabs:['runpayroll','history','compliance','reports','settings'] }
+];
 function visibleTabs(role){
   if(role==='employee') return ['myprofile','training','leave','attendance'];
   if(role==='admin') return ['overview','team','docs','regulatory','training','leave','attendance','org','runpayroll','history','compliance','reviews','hiring','settings'];
@@ -285,6 +291,7 @@ export default function Page(){
   const [cloudLoading,setCloudLoading]=useState(false);
   const [cloudStateReady,setCloudStateReady]=useState(false);
   const [subscription,setSubscription]=useState(null);
+  const [ownerDemoMode,setOwnerDemoMode]=useState(false);
   const [authForm,setAuthForm]=useState({mode:'login',companyName:'',name:'',email:'',password:'',countryCode:'NG'});
 
   function cloudOff(){
@@ -347,9 +354,24 @@ export default function Page(){
   }
 
   useEffect(()=>{
-    let loaded=loadState();
-    if(loaded){ loaded=migrateState(loaded); setState(loaded); }
-    else { const s=seedDemo(); setState(s); saveState(s); }
+    const params=new URLSearchParams(window.location.search);
+    const freshDemo=params.get('freshDemo')==='1' && params.get('demo')==='1' && params.get('local')==='1';
+    const isOwnerDemo=params.get('demo')==='1' && params.get('local')==='1';
+    setOwnerDemoMode(isOwnerDemo);
+    let loaded;
+    if(freshDemo){
+      clearSession();
+      loaded=seedDemo();
+      saveState(loaded);
+      params.delete('freshDemo');
+      const nextQuery=params.toString();
+      window.history.replaceState({},'',window.location.pathname+(nextQuery?'?'+nextQuery:'')+window.location.hash);
+    } else {
+      loaded=loadState();
+      if(loaded){ loaded=migrateState(loaded); }
+      else { loaded=seedDemo(); saveState(loaded); }
+    }
+    setState(loaded);
     // Cloud backend (opt-in): hydrate employees + payroll when configured + logged in
     try{ if(getApiBase() && !cloudOff() && getToken()) hydrateCloud(); else { const me=getSessionUser(); if(me && getToken()) setApiUser(me); } }catch{}
     const updateOnline=()=>setOnline(navigator.onLine);
@@ -415,9 +437,10 @@ export default function Page(){
           </form>
           <div style={{marginTop:14,display:'flex',gap:8,flexWrap:'wrap'}}>
             <a href="https://selar.com/5w877x1957" target="_blank" rel="noreferrer" style={{fontSize:12,background:'#201526',color:'#fff',padding:'8px 12px',borderRadius:6,textDecoration:'none'}}>Buy on Selar</a>
-            <a href="?demo=1" style={{fontSize:12,border:'1px solid rgba(32,21,38,0.2)',padding:'8px 12px',borderRadius:6,textDecoration:'none',color:'#201526'}}>Continue as demo (owner test)</a>
+            <button onClick={()=>{ try{const old=localStorage.getItem('medash_state_v1'); sessionStorage.setItem('medash_owner_demo_backup',old===null?'__EMPTY__':old);}catch{} clearSession(); location.href='?demo=1&local=1&freshDemo=1'; }} style={{fontSize:12,border:'1px solid #E2735B',padding:'9px 12px',borderRadius:6,textDecoration:'none',background:'#E2735B',color:'#fff',fontWeight:700,cursor:'pointer'}}>Owner demo login · sample data</button>
             <button onClick={()=>{ setLicenseKey(''); clearLicense(); }} style={{fontSize:12,background:'transparent',border:'1px solid rgba(32,21,38,0.2)',padding:'8px 12px',borderRadius:6,cursor:'pointer'}}>Clear</button>
           </div>
+          <p style={{fontSize:11,opacity:0.7,marginTop:14}}>Demo uses fictional sample data in this browser only; it does not sign you into a real company or change cloud records.</p>
           <p style={{fontSize:11,opacity:0.55,marginTop:14}}>Developed by <b>Next Level Global</b>. Selar checkout is available; automatic payment verification is not enabled yet, so license activation must be handled manually.</p>
         </div>
       </div>
@@ -495,6 +518,7 @@ export default function Page(){
             <div style={{display:'flex',alignItems:'center',gap:8}}>
               <h1 style={{fontFamily:'Newsreader, serif', fontSize:22, fontWeight:600, fontStyle:'italic'}}>Medash HR Suite</h1>
               <span style={{fontSize:10,background:'rgba(237,238,242,0.08)',border:'1px solid var(--line)',padding:'2px 6px',borderRadius:20,color:'var(--muted)'}}>{state.companyName || '—'}</span>
+              <span aria-label="Active jurisdiction" title="Active jurisdiction for regional settings" style={{fontSize:11,background:'rgba(226,115,91,0.16)',border:'1px solid rgba(226,115,91,0.65)',padding:'5px 9px',borderRadius:20,color:'var(--paper)',fontWeight:700,whiteSpace:'nowrap'}}>🌍 Jurisdiction: {COUNTRY_LABELS[state.countryCode] || state.countryCode || 'Not set'}</span>
             </div>
             <p style={{fontSize:11.5, color:'var(--muted)', marginTop:2}}>Payroll, compliance & HR for teams of 5–20</p>
             <div style={{marginTop:8,display:'flex',gap:6,alignItems:'center'}}>
@@ -543,8 +567,25 @@ export default function Page(){
         </div>
       </header>
 
-      <nav className="tabs">
-        {tabs.map(t=><button key={t} className={`tab-btn ${currentTab===t?'active':''}`} onClick={()=>setCurrentTab(t)}>{TAB_LABELS[t]}</button>)}
+      {ownerDemoMode && <div role="status" style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',padding:'10px 40px',background:'rgba(201,162,39,0.14)',borderBottom:'1px solid rgba(201,162,39,0.4)',color:'var(--paper)',fontSize:12}}>
+        <span><strong>OWNER DEMO MODE</strong> · Sample data only. Changes stay in this browser and are not saved to a real company account.</span>
+        <button onClick={()=>{ try{const backup=sessionStorage.getItem('medash_owner_demo_backup'); if(backup!==null){ if(backup==='__EMPTY__') localStorage.removeItem('medash_state_v1'); else localStorage.setItem('medash_state_v1',backup); sessionStorage.removeItem('medash_owner_demo_backup'); } }catch{} clearSession(); const p=new URLSearchParams(window.location.search); p.delete('demo'); p.delete('local'); p.delete('freshDemo'); window.location.href=window.location.pathname+(p.toString()?'?'+p.toString():'')+window.location.hash; }} style={{background:'transparent',color:'var(--paper)',border:'1px solid var(--line)',borderRadius:6,padding:'6px 10px',cursor:'pointer',whiteSpace:'nowrap'}}>Exit demo</button>
+      </div>}
+      <nav className="tabs" aria-label="Main navigation" style={{alignItems:'stretch',flexWrap:'wrap',gap:8,paddingTop:10,paddingBottom:10}}>
+        {NAV_GROUPS.filter(group=>group.tabs.some(t=>tabs.includes(t))).map(group=>{
+          const groupTabs=group.tabs.filter(t=>tabs.includes(t));
+          const selected=groupTabs.includes(currentTab);
+          return <button key={group.key} className={`tab-btn ${selected?'active':''}`} onClick={()=>setCurrentTab(groupTabs.includes(currentTab)?currentTab:groupTabs[0])} style={{display:'flex',flexDirection:'column',alignItems:'flex-start',gap:4,textAlign:'left',whiteSpace:'normal',flex:'1 1 220px',maxWidth:360,border:selected?'1px solid var(--coral)':'1px solid var(--line)',borderRadius:8,padding:'11px 14px',background:selected?'rgba(226,115,91,0.12)':'transparent'}}>
+            <span style={{fontWeight:700,fontSize:13}}>{group.label}</span>
+            <span style={{fontWeight:400,fontSize:11,lineHeight:1.45,color:'var(--muted)'}}>{group.description}</span>
+          </button>;
+        })}
+        <label style={{display:'flex',alignItems:'center',gap:8,fontSize:11,color:'var(--muted)',whiteSpace:'nowrap'}}>
+          Open a page
+          <select aria-label="Open a page" value={currentTab} onChange={e=>setCurrentTab(e.target.value)} style={{background:'var(--bg-2)',color:'var(--paper)',border:'1px solid var(--line)',borderRadius:6,padding:'9px 10px',fontSize:12,maxWidth:'min(48vw,260px)'}}>
+            {tabs.map(t=><option key={t} value={t}>{TAB_LABELS[t]}</option>)}
+          </select>
+        </label>
       </nav>
 
       <main>
@@ -1414,7 +1455,8 @@ function AuthScreen({authForm,setAuthForm,onAuth,showToast}){
           <button type="submit" disabled={busy} className="btn btn-primary" style={{width:'100%',marginTop:4,padding:12,opacity:busy?0.6:1}}>{busy?'Please wait…':f.mode==='signup'?'Create company + owner login':'Log in'}</button>
         </form>
         <div style={{marginTop:14,display:'flex',gap:8,flexWrap:'wrap'}}>
-          <button onClick={()=>{ location.href='?demo=1&local=1'; }} style={{fontSize:12,border:'1px solid rgba(32,21,38,0.2)',padding:'8px 12px',borderRadius:6,background:'transparent',cursor:'pointer'}}>Continue offline (no cloud)</button>
+          <button onClick={()=>{ try{const old=localStorage.getItem('medash_state_v1'); sessionStorage.setItem('medash_owner_demo_backup',old===null?'__EMPTY__':old);}catch{} clearSession(); location.href='?demo=1&local=1&freshDemo=1'; }} style={{fontSize:12,border:'1px solid #E2735B',padding:'9px 12px',borderRadius:6,background:'#E2735B',color:'#fff',fontWeight:700,cursor:'pointer'}}>Owner demo login · sample data</button>
+          <button onClick={()=>{ location.href='?local=1'; }} style={{fontSize:12,border:'1px solid rgba(32,21,38,0.2)',padding:'8px 12px',borderRadius:6,background:'transparent',cursor:'pointer'}}>Continue offline</button>
           <button onClick={()=>{ const u=prompt('Backend URL (empty = default from deploy):', localStorage.getItem('medash_api_base')||''); if(u!==null){ setApiBaseOverride(u.trim()); location.reload(); } }} style={{fontSize:12,border:'1px solid rgba(32,21,38,0.2)',padding:'8px 12px',borderRadius:6,background:'transparent',cursor:'pointer'}}>Change backend URL</button>
         </div>
         <p style={{fontSize:11,opacity:0.55,marginTop:14}}>Each person logs in with their own email — employees only ever see their own payslip. Invite them from Team → Invite after logging in.</p>
