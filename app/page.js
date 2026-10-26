@@ -683,9 +683,9 @@ function Team({state,update,setModal,showToast}){
     <div className="panel-head"><div><h2>Team</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Add, edit, or click name for documents{cloudOn?' · ☁ cloud sync on':''}</p></div><div style={{display:'flex',gap:8}}><button className="btn btn-primary" onClick={()=>setModal({type:'employee',data:null})}>+ Add teammate</button></div></div>
     {state.employees.length===0? <div style={{color:'var(--muted)',textAlign:'center',padding:30}}>No teammates yet.</div> :
       <div className="grid">{state.employees.map(e=>{
-        const d=estimateDeductions(e.gross);
+        const lastLine=[...state.runs].reverse().map(r=>(r.lines||[]).find(l=>l.employeeId===e.id)).find(Boolean);
         const progress=Math.round(100*DOC_TYPES.filter(dt=>e.documents?.[dt.key]).length/DOC_TYPES.length);
-        return <div key={e.id} className={`card ${e.active?'':'inactive'}`}><div style={{display:'flex',gap:12,alignItems:'center'}}><div style={{width:40,height:40,borderRadius:'50%',overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Newsreader',fontWeight:600,color:'#fff',background:e.color,flexShrink:0}}>{e.passportPhoto ? <img src={e.passportPhoto} alt='' style={{width:'100%',height:'100%',objectFit:'cover'}}/> : initials(e.name)}</div><div style={{flex:1}}><div style={{fontWeight:600,fontSize:14,cursor:'pointer',color:'#201526',textDecoration:'underline'}} onClick={()=>setModal({type:'staffDocs',data:e.id})}>{e.name}</div><div style={{fontSize:11,opacity:0.6}}>{e.role}{e.active?'':' · inactive'} · {progress}% docs</div></div></div><div style={{display:'flex',justifyContent:'space-between',fontSize:12.5}}><span style={{opacity:0.55}}>Gross monthly</span><span style={{fontFamily:'IBM Plex Mono',fontWeight:600}}>{money(e.gross)}</span></div><div style={{display:'flex',justifyContent:'space-between',fontSize:12.5}}><span style={{opacity:0.55}}>Net pay</span><span style={{fontFamily:'IBM Plex Mono',fontWeight:600}}>{money(d.net)}</span></div>
+        return <div key={e.id} className={`card ${e.active?'':'inactive'}`}><div style={{display:'flex',gap:12,alignItems:'center'}}><div style={{width:40,height:40,borderRadius:'50%',overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Newsreader',fontWeight:600,color:'#fff',background:e.color,flexShrink:0}}>{e.passportPhoto ? <img src={e.passportPhoto} alt='' style={{width:'100%',height:'100%',objectFit:'cover'}}/> : initials(e.name)}</div><div style={{flex:1}}><div style={{fontWeight:600,fontSize:14,cursor:'pointer',color:'#201526',textDecoration:'underline'}} onClick={()=>setModal({type:'staffDocs',data:e.id})}>{e.name}</div><div style={{fontSize:11,opacity:0.6}}>{e.role}{e.active?'':' · inactive'} · {progress}% docs</div></div></div><div style={{display:'flex',justifyContent:'space-between',fontSize:12.5}}><span style={{opacity:0.55}}>Gross monthly</span><span style={{fontFamily:'IBM Plex Mono',fontWeight:600}}>{money(e.gross)}</span></div><div style={{display:'flex',justifyContent:'space-between',fontSize:12.5}}><span style={{opacity:0.55}}>Last recorded net pay</span><span style={{fontFamily:'IBM Plex Mono',fontWeight:600}}>{lastLine ? money(lastLine.net) : '—'}</span></div>
         <div style={{display:'flex',gap:6,marginTop:2,flexWrap:'wrap'}}><button onClick={()=>setModal({type:'staffDocs',data:e.id})} style={{background:'var(--teal)',color:'#fff',border:'none',borderRadius:5,padding:'6px 10px',fontSize:11.5,cursor:'pointer'}}>📄 Docs</button><button onClick={()=>setModal({type:'employee',data:e.id})} style={{background:'#E0E2E8',border:'none',borderRadius:5,padding:'6px 10px',fontSize:11.5,cursor:'pointer',color:'#201526'}}>Edit</button><button onClick={()=>{ if(cloudOn) cloudToggle(e); else update(s=>{const emp=s.employees.find(x=>x.id===e.id); emp.active=!emp.active;}); }} style={{background:'#E0E2E8',border:'none',borderRadius:5,padding:'6px 10px',fontSize:11.5,cursor:'pointer',color:'#201526'}}>{e.active?'Deactivate':'Reactivate'}</button>{cloudOn && cloudRole!=='employee' && <button onClick={()=>cloudInvite(e)} style={{background:'#4C8577',color:'#fff',border:'none',borderRadius:5,padding:'6px 10px',fontSize:11.5,cursor:'pointer'}}>✉ Invite</button>}<button onClick={()=>{ if(cloudOn) cloudRemove(e); else { if(confirm('Remove this teammate?')) update(s=>{s.employees=s.employees.filter(x=>x.id!==e.id);}); showToast('Removed'); } }} style={{background:'transparent',border:'1px solid rgba(226,115,91,0.5)',borderRadius:5,padding:'6px 10px',fontSize:11.5,cursor:'pointer',color:'#E2735B'}}>Remove</button></div></div>;
       })}</div>
     }
@@ -1207,57 +1207,17 @@ function ManualPayroll({state,update,showToast}){
 }
 function RunPayroll({state,update,setCurrentTab,showToast}){
   const manual = <ManualPayroll state={state} update={update} showToast={showToast} />;
-  if(state.countryCode && state.countryCode!=='NG') return <>
-    <div className="panel-head"><div><h2>Payroll setup</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Selected country: {state.countryCode==='GB'?'United Kingdom':'United States'}</p></div></div>
+  const country = COUNTRY_LABELS[state.countryCode] || "selected country";
+  return <>
+    <div className="panel-head"><div><h2>Payroll setup</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Selected jurisdiction: {country}</p></div></div>
     <div style={{border:'1px solid var(--line)',borderLeft:'4px solid var(--coral)',borderRadius:10,padding:22,background:'var(--bg-2)',maxWidth:760,marginBottom:24}}>
-      <h3 style={{margin:'0 0 10px',fontSize:16}}>Automated statutory calculations are not enabled yet</h3>
-      <p style={{fontSize:13,lineHeight:1.7,color:'var(--paper-dim)',margin:'0 0 12px'}}>Use manual entry or CSV upload for payroll figures checked by your accountant or payroll provider. Medash will not apply Nigerian deductions to UK or US employees.</p>
-      <p style={{fontSize:12,lineHeight:1.7,color:'var(--muted)',margin:0}}>UK tax, National Insurance and pension rules, or US federal/state/local taxes and payroll contributions, still need jurisdiction-specific implementation and testing.</p>
+      <h3 style={{margin:'0 0 10px',fontSize:16}}>Manual payroll only — statutory estimates are paused</h3>
+      <p style={{fontSize:13,lineHeight:1.7,color:'var(--paper-dim)',margin:'0 0 12px'}}>Use manual entry or CSV upload for figures checked by a qualified payroll professional. UK and US statutory calculations are not implemented, and Nigeria’s current tax-year rules need professional validation before an automated estimate can safely be offered.</p>
+      <p style={{fontSize:12,lineHeight:1.7,color:'var(--muted)',margin:0}}>Medash does not calculate certified statutory payroll, submit tax filings, remit contributions, or transfer wages. Saved payroll drafts are records only; verify every figure before payment.</p>
       <button className="btn" style={{marginTop:16}} onClick={()=>setCurrentTab('settings')}>Open Country &amp; Region settings</button>
     </div>
     {manual}
   </>;
-  const period=nextPeriod(state.runs);
-  const active=state.employees.filter(e=>e.active);
-  if(!active.length) return <>{manual}<div style={{color:'var(--muted)',textAlign:'center',padding:30}}>Add at least one active teammate before running automated estimate payroll.</div></>;
-  const lines=active.map(e=>({emp:e,...estimateDeductions(e.gross)}));
-  const total=lines.reduce((s,l)=>s+l.emp.gross+l.pensionEmployer,0);
-  const netTotal=lines.reduce((s,l)=>s+l.net,0);
-  const scheduleLines=active.map(e=>{ const d=estimateDeductions(e.gross); return {employeeId:e.id,name:e.name,role:e.role,gross:e.gross,bank:e.bank,account:e.account,...d}; });
-  return (<>
-    {manual}
-    <div className="panel-head"><div><h2>Automated payroll estimate — {periodLabel(period)}</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Nigeria only. Review calculations carefully; this is not a certified statutory payroll engine.</p></div>
-      <div style={{display:'flex',gap:8}}><button className="btn" style={{background:'#fff',color:'#201526',border:'1px solid #ddd'}} onClick={()=>printSchedule({companyName: state.companyName, period, lines: scheduleLines})}>🖨 Printable schedule</button></div>
-    </div>
-    <div className="run-row" style={{cursor:'default'}}>
-      <div style={{display:'grid',gridTemplateColumns:'1.2fr 1fr 1.1fr',gap:8,padding:'6px 0 8px',fontSize:10,opacity:0.55,textTransform:'uppercase',letterSpacing:0.05+'em',borderBottom:'1px solid rgba(32,21,38,0.08)'}}><span>Staff</span><span>Account</span><span style={{textAlign:'right'}}>Net pay</span></div>
-      {lines.map(l=><div key={l.emp.id} style={{display:'grid',gridTemplateColumns:'1.2fr 1fr 1.1fr',gap:8,alignItems:'center',fontSize:12.5,padding:'8px 0',borderBottom:'1px solid rgba(32,21,38,0.05)'}}><span>{l.emp.name}<span style={{opacity:0.55}}> — {l.emp.role}</span></span><span style={{fontFamily:'IBM Plex Mono',fontSize:12}}>{l.emp.bank || '—'} · {l.emp.account || '—'}</span><span style={{fontFamily:'IBM Plex Mono',fontWeight:600,textAlign:'right'}}>{money(l.net)}</span></div>)}
-      <div style={{display:'flex',justifyContent:'space-between',fontWeight:700,borderTop:'1px solid rgba(32,21,38,0.15)',marginTop:6,paddingTop:12,fontSize:13}}><span>Total net pay</span><span style={{fontFamily:'IBM Plex Mono'}}>{money(netTotal)}</span></div>
-      <div style={{display:'flex',justifyContent:'space-between',fontSize:12.5,padding:'6px 0'}}><span>Total cost to company (incl. employer pension)</span><span style={{fontFamily:'IBM Plex Mono',fontWeight:600}}>{money(total)}</span></div>
-      <div style={{fontSize:11,color:'rgba(32,21,38,0.55)',marginTop:6}}>This estimate does not initiate a bank transfer.</div>
-    </div>
-    <div style={{display:'flex',gap:10,marginTop:16,flexWrap:'wrap'}}>
-      <button className="btn btn-primary" onClick={async ()=>{
-        if(getApiBase() && getToken()){
-          try{
-            const run=await PayrollAPI.run();
-            const local=cloudRunToLocal(run);
-            update(s=>{ s.runs.push(local); });
-            showToast(`Payroll estimate for ${periodLabel(local.period)} saved — review before payment.`);
-          }catch(err){ showToast('Cloud payroll failed: '+err.message); return; }
-        } else {
-          if(state.runs.some(r=>r.period===period)){showToast('A payroll run already exists for this period. Review History first.');return;}
-          update(s=>{
-            const lines2=active.map(e=>{ const d=estimateDeductions(e.gross); return {employeeId:e.id,name:e.name,role:e.role,gross:e.gross, bank:e.bank, account:e.account, ...d}; });
-            s.runs.push({id:uid(),period,createdAt:new Date().toISOString(),lines:lines2,status:'prepared',method:'automatic-estimate'});
-          });
-          showToast(`Payroll estimate for ${periodLabel(period)} saved — review before payment.`);
-        }
-        setCurrentTab('history');
-      }}>Save estimate for {periodLabel(period)}{getApiBase() && getToken()?' ☁':''}</button>
-      <button className="btn" style={{background:'#EDEEF2',color:'#201526'}} onClick={()=>printSchedule({companyName: state.companyName, period, lines: scheduleLines})}>🖨 Print payment schedule for Finance/CEO</button>
-    </div>
-  </>);
 }
 function History({state,expandedRun,setExpandedRun}){
   if(!state.runs.length) return <><div className="panel-head"><div><h2>History</h2></div></div><div style={{color:'var(--muted)',textAlign:'center',padding:30}}>No payroll runs yet.</div></>;
