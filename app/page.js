@@ -1056,6 +1056,7 @@ function ManualPayroll({state,update,showToast}){
   const [fileName,setFileName]=useState('');
   const [saving,setSaving]=useState(false);
   const [csvError,setCsvError]=useState('');
+  useEffect(()=>{if(!rows.length&&active.length)setRows(active.map(e=>({employeeId:e.id,gross:String(e.gross??''),monthlyPAYE:'',pensionEmployee:'',pensionEmployer:'',nhf:'',nsitf:'',otherDeductions:'',net:'',notes:''})));},[active.length,rows.length]);
   function updateRow(index,key,value){ setRows(old=>old.map((row,i)=>i===index?{...row,[key]:value}:row)); }
   function parseCsv(text){
     const records=[]; let row=[],cell='',quoted=false;
