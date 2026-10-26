@@ -972,7 +972,7 @@ function Leave({state,update,setModal,showToast}){
   }
   return (<>
     <div className="panel-head"><div><h2>Leave Management</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>{isEmployee?'Your leave requests & balances':'Team leave — request, approve, track balances'}</p></div><button className="btn btn-primary" onClick={()=>setModal({type:'leave'})}>+ Request leave</button></div>
-    <p style={{fontSize:11.5,color:'var(--muted)',lineHeight:1.6,marginTop:-8}}>Leave-day amounts shown are editable company-policy defaults, not statutory entitlements. Set your organisation’s policy with local HR/legal advice for the selected jurisdiction.</p>
+    <p style={{fontSize:11.5,color:'var(--muted)',lineHeight:1.6,marginTop:-8}}>Leave-day amounts shown are sample company-policy defaults, not statutory entitlements. Policy customization is not yet available in the app; confirm local requirements with HR/legal advice for the selected jurisdiction.</p>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginBottom:14}}>
       {LEAVE_TYPES.map(t=>{
         const bal=isEmployee? balance(myId,t.key) : null;
