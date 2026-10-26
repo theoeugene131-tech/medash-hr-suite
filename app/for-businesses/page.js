@@ -44,7 +44,7 @@ export default function ForBusinessesPage() {
               <span style={{ fontSize: 14 }}>{item}</span>
             </div>
           ))}
-          <div style={{ marginTop: 10, padding: 14, borderRadius: 10, background: "#241623", color: "#D4C6D1", fontSize: 12, lineHeight: 1.7 }}>Product note: UK and US payroll calculations are not yet available. We will not describe them as supported until the relevant rules are implemented and tested.</div>
+          <div style={{ marginTop: 10, padding: 14, borderRadius: 10, background: "#241623", color: "#D4C6D1", fontSize: 12, lineHeight: 1.7 }}>Product note: Medash currently supports manual payroll entry and CSV import only. Statutory payroll calculations, filings, remittances and bank payments are not available in Nigeria, the UK or the US.</div>
         </div>
       </section>
 
