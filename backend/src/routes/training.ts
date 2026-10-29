@@ -41,7 +41,7 @@ publicTrainingRouter.post("/submit", async (req, res) => {
   const code = cleanAccessCode(parsed.data.code);
   try {
     const access = await db.findByField("trainingAccessCodes", "code", code);
-    if (!access) return res.status(404).json({ error: "This access code is invalid or has been disabled." });
+    if (!access || access.revokedAt) return res.status(404).json({ error: "This access code is invalid or has been disabled." });
     const record = await db.findForCompany("companyState", access.companyId, access.companyId);
     const state = record?.state as Record<string, any> | undefined;
     const course = Array.isArray(state?.trainings) ? state!.trainings.find((item: any) => item.id === access.trainingId) : null;
