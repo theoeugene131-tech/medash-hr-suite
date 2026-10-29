@@ -930,6 +930,7 @@ function Training({state,update,setModal,showToast}){
     }catch(err){ showToast(err.message||'Could not create external training access.'); }
   }
   const isEmployee=state.currentRole==='employee';
+  const canManageTraining=state.currentRole==='owner'||state.currentRole==='admin';
   const myId=state.viewingEmployeeId||state.employees[0]?.id;
   // force trainings to exist — if corrupted localStorage, seed robust 6
   if(!state.trainings || state.trainings.length===0){
@@ -954,10 +955,10 @@ function Training({state,update,setModal,showToast}){
       <div style={{background:'var(--paper)',color:'#201526',borderRadius:8,padding:12}}><div style={{fontSize:10,opacity:0.55,textTransform:'uppercase'}}>Certificates</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{certCount}</div></div>
     </div>
     <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
-      {['catalog','library','enrollments','certificates',...(!isEmployee?['external']:[])].map(t=> <button key={t} onClick={()=>setTab(t)} style={{padding:'6px 12px',borderRadius:20,fontSize:12,border:'1px solid var(--line)',background:tab===t?'var(--paper)':'transparent',color:tab===t?'#201526':'var(--muted)',cursor:'pointer',textTransform:'capitalize'}}>{t}</button>)}
+      {['catalog','library','enrollments','certificates',...(canManageTraining?['external']:[])].map(t=> <button key={t} onClick={()=>setTab(t)} style={{padding:'6px 12px',borderRadius:20,fontSize:12,border:'1px solid var(--line)',background:tab===t?'var(--paper)':'transparent',color:tab===t?'#201526':'var(--muted)',cursor:'pointer',textTransform:'capitalize'}}>{t}</button>)}
     </div>
 
-    {tab==='external' && !isEmployee && <div className="card" style={{gap:10}}>
+    {tab==='external' && canManageTraining && <div className="card" style={{gap:10}}>
       <div style={{fontWeight:700,fontSize:15}}>External trainee results</div>
       <div style={{fontSize:12,color:'var(--muted)'}}>Results are limited to access codes created by your company. External trainees do not receive employee account access.</div>
       {externalLoading && <p style={{fontSize:12}}>Loading results…</p>}
@@ -971,7 +972,7 @@ function Training({state,update,setModal,showToast}){
     {tab==='library' && <div style={{display:'grid',gap:12}}>
       <div className="card" style={{gap:6}}>
         <div style={{fontWeight:700,fontSize:15}}>Reusable course library</div>
-        <div style={{fontSize:12,color:'var(--muted)',lineHeight:1.5}}>Choose a starter course and add an editable copy to your company catalogue. Every company receives its own copy; your employees, course progress, and results are not shared with other companies. Review and adapt the material to your local laws and policies before assigning it.</div>
+        <div style={{fontSize:12,color:'var(--muted)',lineHeight:1.5}}>Choose a starter course and add a copy to your company catalogue. Each company keeps its own course record; employee progress and results are never shared across companies. Check the content against your local laws and company policies before assigning it.</div>
       </div>
       {libraryTemplates.map(template=>{
         const alreadyAdded=state.trainings.some(course=>course.libraryKey===template.key);
@@ -981,7 +982,7 @@ function Training({state,update,setModal,showToast}){
             <div style={{fontSize:11,color:'var(--muted)'}}>{template.duration} · {template.questions.length} exam questions</div>
           </div>
           <details><summary style={{cursor:'pointer',fontSize:12,fontWeight:600}}>Preview study material and exam topics</summary><div style={{whiteSpace:'pre-wrap',fontSize:12,lineHeight:1.6,marginTop:8}}>{template.materials}</div><ul style={{fontSize:12,lineHeight:1.6}}>{template.questions.map((q,i)=><li key={i}>{q.text}</li>)}</ul></details>
-          {!isEmployee && <button className="btn btn-primary" disabled={alreadyAdded} onClick={()=>{
+          {canManageTraining && <button className="btn btn-primary" disabled={alreadyAdded} onClick={()=>{
             const course={...template,id:'course-'+Math.random().toString(36).slice(2,10),createdAt:new Date().toISOString().slice(0,10),required:false,libraryKey:template.key,questions:template.questions.map(q=>({...q,id:'question-'+Math.random().toString(36).slice(2,9)})),modules:[{id:'module-'+Math.random().toString(36).slice(2,8),title:'Study material',type:'doc',content:template.materials,duration:'30m'},{id:'quiz-'+Math.random().toString(36).slice(2,8),title:'Final assessment',type:'quiz',content:template.questions.length+' questions · '+template.passPercent+'% pass mark',duration:'20m'}]};
             update(state=>{state.trainings.push(course);});showToast('Starter course added to your company catalogue');
           }}>{alreadyAdded?'Already added':'Add to my courses'}</button>}
@@ -999,7 +1000,7 @@ function Training({state,update,setModal,showToast}){
           <div style={{fontSize:11,opacity:0.65}}>{tr.modules.length} modules: {tr.modules.map(m=>m.title).join(' · ')}</div>
           <div style={{display:'flex',gap:6,marginTop:4,flexWrap:'wrap'}}>
             <button onClick={()=>setModal({type:'courseView', data:tr.id})} style={{background:'#fff',border:'1px solid #ddd',borderRadius:5,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>View & Take Test{hasQuiz?' 📝':''}</button>
-            {!isEmployee && <button onClick={()=>createExternalAccess(tr)} style={{background:'#286c62',color:'#fff',border:'none',borderRadius:5,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>Share external access</button>}
+            {canManageTraining && <button onClick={()=>createExternalAccess(tr)} style={{background:'#286c62',color:'#fff',border:'none',borderRadius:5,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>Share external access</button>}
             {isEmployee ? (
               myEnroll? <span style={{fontSize:11,background:myEnroll.progress===100?'#4C8577':'#E2735B',color:'#fff',padding:'6px 10px',borderRadius:5}}>{myEnroll.progress===100?'Completed ✓':`${myEnroll.progress}% — Enrolled`}</span>
               : <button onClick={()=>{ update(s=>{ s.enrollments.push({id:uid(), employeeId:myId, trainingId:tr.id, progress:0, completedModules:[], enrolledAt:new Date().toISOString().slice(0,10), completedAt:null, score:null, certificateId:null}); }); showToast('Enrolled — open View & Take Test to start'); }} style={{background:'var(--teal)',color:'#fff',border:'none',borderRadius:5,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>Enroll me</button>
