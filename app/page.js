@@ -862,8 +862,16 @@ function Training({state,update,setModal,showToast}){
     return ()=>{ active=false; };
   },[tab]);
   async function createExternalAccess(training){
+    const rawLimit=window.prompt('Maximum external trainees for '+training.title+'? Leave blank for unlimited.','');
+    if(rawLimit===null) return;
+    const body={trainingId:training.id};
+    if(rawLimit.trim()){
+      const seatLimit=Number(rawLimit);
+      if(!Number.isInteger(seatLimit)||seatLimit<1){ alert('Enter a whole number of at least 1, or leave the limit blank.'); return; }
+      body.seatLimit=seatLimit;
+    }
     try{
-      const data=await api('/api/training/access',{method:'POST',body:{trainingId:training.id}});
+      const data=await api('/api/training/access',{method:'POST',body});
       const url=window.location.origin+'/training-access?code='+encodeURIComponent(data.access.code);
       const message='External training link for '+training.title+':\\n'+url+'\\nAccess code: '+data.access.code+'\\nShare this link and code with trainees.';
       try{ await navigator.clipboard.writeText(url); alert(message+'\\n\\nLink copied to clipboard.'); }
