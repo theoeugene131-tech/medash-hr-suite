@@ -2,6 +2,7 @@
 
 import { CompanyAPI } from "@/lib/api";
 import { loadState, saveState } from "@/lib/store";
+import { getCountryOptions, getCurrencyOptions, regionForCountry } from "@/lib/region";
 
 const REGIONS = {
   NG: {
@@ -15,7 +16,7 @@ const REGIONS = {
     unavailable: ["Certified statutory payroll or tax filing", "Automatic bank payments or statutory remittances"],
   },
   GB: {
-    label: "United Kingdom",
+    label: "Europe/UK",
     currency: "GBP",
     locale: "en-GB",
     timezone: "Europe/London",
@@ -46,15 +47,22 @@ const SHARED_FEATURES = [
 ];
 
 export default function CountrySettings({ state, update, showToast, cloudMode = false }) {
-  const code = REGIONS[state.countryCode] ? state.countryCode : "NG";
-  const region = REGIONS[code];
+  const code = regionForCountry(state.countryCode).countryCode;
+  const region = { ...regionForCountry(code), ...(REGIONS[code] || {}) };
+  const countryOptions = getCountryOptions();
+  const currencyOptions = getCurrencyOptions();
+  if (!REGIONS[code]) {
+    region.payrollLevel = "Manual entry / CSV only";
+    region.payroll = "Local statutory payroll calculation has not been implemented or verified for this jurisdiction. You may record figures prepared and checked by a qualified local payroll provider; do not rely on Medash for tax calculations, statutory deductions or filings.";
+    region.available = ["General HR records, onboarding, leave, attendance, training and internal reports", "Manual payroll entry or CSV workflows where available"];
+    region.unavailable = ["Verified local statutory payroll calculations", "Local tax filings, statutory remittances or bank payments"]; 
+  }
 
   async function chooseCountry(nextCode) {
-    const next = REGIONS[nextCode];
-    if (!next) return;
+    const next = { ...regionForCountry(nextCode), ...(REGIONS[nextCode] || {}) };
     if (cloudMode) {
       try {
-        await CompanyAPI.updateRegion(nextCode);
+        await CompanyAPI.updateRegion(nextCode, next.currency);
       } catch (error) {
         if (showToast) showToast(error.message || "Could not save company region to the cloud.");
         return;
@@ -81,7 +89,7 @@ export default function CountrySettings({ state, update, showToast, cloudMode = 
       s.locale = next.locale;
       s.timezone = next.timezone;
     });
-    if (showToast) showToast(`Company region saved: ${next.label}`);
+    if (showToast) showToast(`Company country saved: ${next.label}`);
   }
 
   return (
@@ -97,11 +105,11 @@ export default function CountrySettings({ state, update, showToast, cloudMode = 
       <div style={{ background: "var(--bg-2)", border: "1px solid var(--coral)", borderRadius: 12, padding: 22, marginBottom: 18 }}>
         <label htmlFor="medash-country" style={{ display: "block", fontSize: 12, marginBottom: 8, color: "var(--muted)" }}>Active company jurisdiction</label>
         <select id="medash-country" value={code} onChange={(e) => chooseCountry(e.target.value)} style={{ width: "100%", maxWidth: 460, padding: 12, background: "var(--bg)", color: "var(--paper)", border: "1px solid var(--line)", borderRadius: 7, fontSize: 14 }}>
-          {Object.entries(REGIONS).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
+          {countryOptions.map((item) => <option key={item.countryCode} value={item.countryCode}>{item.countryCode === "GB" ? "Europe/UK" : item.label}</option>)}
         </select>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginTop: 20 }}>
+        <label htmlFor="medash-currency" style={{ display: "block", fontSize: 12, margin: "16px 0 8px", color: "var(--muted)" }}>Company reporting currency</label>\n        <select id="medash-currency" value={currencyOptions.some((item) => item.code === (state.currency || region.currency)) ? (state.currency || region.currency) : region.currency} onChange={(e) => chooseCurrency(e.target.value)} style={{ width: "100%", maxWidth: 460, padding: 12, background: "var(--bg)", color: "var(--paper)", border: "1px solid var(--line)", borderRadius: 7, fontSize: 14 }}>\n          {currencyOptions.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}\n        </select>\n        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginTop: 20 }}>
           {[
-            ["Currency preference", region.currency],
+            ["Currency preference", state.currency || region.currency],
             ["Date / number format", region.locale],
             ["Time zone default", region.timezone],
             ["Payroll workflow", region.payrollLevel],
@@ -115,7 +123,7 @@ export default function CountrySettings({ state, update, showToast, cloudMode = 
       </div>
 
       <div style={{ border: "1px solid var(--line)", borderRadius: 10, padding: 18, marginBottom: 18 }}>
-        <h3 style={{ fontSize: 15, margin: "0 0 10px" }}>HR tools available in all three countries</h3>
+        <h3 style={{ fontSize: 15, margin: "0 0 10px" }}>HR tools available internationally</h3>
         <p style={{ fontSize: 12, lineHeight: 1.6, color: "var(--muted)", margin: "0 0 12px" }}>These are general HR record-management tools, not a guarantee of local legal compliance.</p>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 9 }}>
           {SHARED_FEATURES.map((item) => <div key={item} style={{ display: "flex", gap: 8, alignItems: "flex-start", background: "var(--bg-2)", padding: 11, borderRadius: 7, fontSize: 12, lineHeight: 1.5 }}><span style={{ color: "var(--teal)" }}>✓</span><span>{item}</span></div>)}
@@ -150,7 +158,7 @@ export default function CountrySettings({ state, update, showToast, cloudMode = 
       </div>
 
       <p style={{ color: "var(--muted)", fontSize: 11, lineHeight: 1.7, marginTop: 18 }}>
-        Currency, date formatting and time-zone preferences are saved to the company settings. Statutory payroll calculations are currently paused in all three countries. Payroll figures must be checked by a qualified local professional; the app does not submit tax returns, statutory filings or payments.
+        Currency, date formatting and time-zone preferences are saved to the company settings. Statutory payroll calculations are not enabled or verified for most jurisdictions. Payroll figures must be checked by a qualified local professional; the app does not submit tax returns, statutory filings or payments.
       </p>
     </section>
   );
