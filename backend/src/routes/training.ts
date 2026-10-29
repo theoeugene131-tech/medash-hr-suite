@@ -144,7 +144,12 @@ trainingRouter.post("/access", requireAdmin, async (req: AuthedRequest, res) => 
     if (!course) return res.status(404).json({ error: "Course not found in your company." });
     if (!Array.isArray(course.questions) || course.questions.length === 0) return res.status(400).json({ error: "Add exam questions to this course before sharing external access." });
     const existing = ((await db.table("trainingAccessCodes", req.auth!.companyId)) as any[]).find((item) => item.trainingId === course.id && !item.revokedAt);
-    if (existing) return res.json({ access: existing, url: `${process.env.APP_URL || process.env.FRONTEND_URL || ""}/training-access?code=${existing.code}` });
+    if (existing) {
+      const updated = parsed.data.seatLimit !== undefined
+        ? await db.updateForCompany("trainingAccessCodes", existing.id, req.auth!.companyId, { seatLimit: parsed.data.seatLimit ?? null })
+        : existing;
+      return res.json({ access: updated || existing, url: `${process.env.APP_URL || process.env.FRONTEND_URL || ""}/training-access?code=${existing.code}` });
+    }
     const code = randomBytes(12).toString("hex").toUpperCase();
     const access = { id: "access-" + randomBytes(10).toString("hex"), companyId: req.auth!.companyId, trainingId: course.id, code, seatLimit: parsed.data.seatLimit ?? null, createdAt: new Date().toISOString(), revokedAt: null };
     await db.insert("trainingAccessCodes", access);
