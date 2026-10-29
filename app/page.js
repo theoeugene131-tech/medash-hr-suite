@@ -2,8 +2,9 @@
 import { useEffect, useState } from "react";
 import { loadState, saveState } from "@/lib/store";
 import { normalizeKey, isValidFormat, getStoredKey, saveLicense, clearLicense } from "@/lib/license";
-import { getApiBase, setApiBaseOverride, getToken, setSession, getSessionUser, clearSession, AuthAPI, EmployeesAPI, PayrollAPI, CompanyAPI, CompanyStateAPI } from "@/lib/api";
+import { getApiBase, setApiBaseOverride, getToken, setSession, getSessionUser, clearSession, AuthAPI, EmployeesAPI, PayrollAPI, CompanyAPI, CompanyStateAPI, api } from "@/lib/api";
 import CountrySettings from "@/components/CountrySettings";
+import TrainingCourseBuilder from "@/components/TrainingCourseBuilder";
 import { formatMoney, formatDate, getCurrencySymbol, getCountryOptions } from "@/lib/region";
 
 const AVATAR_COLORS = ['#E2735B','#C9A227','#4C8577','#7D6BA6','#B3563F','#3E7C8A'];
@@ -864,7 +865,7 @@ function Training({state,update,setModal,showToast}){
   const certCount=visibleCerts.length;
   return (<>
     <div className="panel-head"><div><h2>Training Suite</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>{isEmployee? 'Your courses — learn offline, get certified' : 'Courses + Assignments + Progress + Certificates — offline & printable'}</p></div>
-      {!isEmployee && <div style={{display:'flex',gap:8}}><button className="btn btn-primary" onClick={()=>setModal({type:'course'})}>+ New course</button><button className="btn" style={{background:'#fff',color:'#201526'}} onClick={()=>setModal({type:'enroll'})}>+ Enroll staff</button></div>}
+      {!isEmployee && <div style={{display:'flex',gap:8}}><button className="btn btn-primary" onClick={()=>setModal({type:'courseBuilder'})}>+ Course builder</button><button className="btn" onClick={()=>setModal({type:'course'})}>+ Quick course</button><button className="btn" style={{background:'#fff',color:'#201526'}} onClick={()=>setModal({type:'enroll'})}>+ Enroll staff</button></div>}
       {isEmployee && <div style={{fontSize:11,color:'var(--muted)',background:'rgba(237,238,242,0.08)',padding:'6px 10px',borderRadius:20}}>Employee view — contact HR to enroll</div>}
     </div>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:12,marginBottom:14}}>
@@ -1331,15 +1332,26 @@ function CourseView({tr, state, update, showToast, close}){
   if(!tr) return <div style={{padding:20,color:'#8C3B28'}}>Course not found — please click Reset demo or hard refresh (Ctrl+Shift+R).</div>;
   const isEmployee=state.currentRole==='employee';
   const myId=state.viewingEmployeeId||state.employees[0]?.id;
-  const quizQuestions=[
-    {q:'What is the primary goal of this training?', a:['Compliance','Entertainment','None'], correct:0},
-    {q:'Pass mark for the test is?', a:['50%','70%','90%'], correct:1},
-    {q:'Who should report an incident?', a:['Only manager','Everyone','No one'], correct:1},
-  ];
-  function submitQuiz(){
-    let score=0; quizQuestions.forEach((qq,i)=>{ if(answers[i]===qq.correct) score++; });
-    const pct=Math.round(100*score/quizQuestions.length);
-    const pass=pct>=70;
+  const quizQuestions=Array.isArray(tr.questions)&&tr.questions.length
+    ? tr.questions.map((q,i)=>({q:q.text,a:q.options,correct:q.correctIndex,id:q.id||String(i)}))
+    : [
+      {q:'What is the primary goal of this training?', a:['Compliance','Entertainment','None'], correct:0, id:'0'},
+      {q:'Pass mark for the test is?', a:['50%','70%','90%'], correct:1, id:'1'},
+      {q:'Who should report an incident?', a:['Only manager','Everyone','No one'], correct:1, id:'2'},
+    ];
+  const passPercent=Number.isInteger(tr.passPercent)?tr.passPercent:70;
+  async function submitQuiz(){
+    if(quizQuestions.some((qq)=>answers[qq.id]===undefined)){ showToast('Please answer every question first'); return; }
+    let pct=0, pass=false;
+    try {
+      if(state.currentRole==='employee' && getApiBase() && getToken()){
+        const scored=await api('/api/training/submit',{method:'POST',body:{trainingId:tr.id,answers}});
+        pct=scored.result.percent; pass=scored.result.passed;
+      } else {
+        const score=quizQuestions.reduce((sum,qq)=>sum+(answers[qq.id]===qq.correct?1:0),0);
+        pct=Math.round(100*score/quizQuestions.length); pass=pct>=passPercent;
+      }
+    } catch(err){ showToast('Exam could not be scored: '+err.message); return; }
     setShowResult({score:pct, pass});
     if(pass){
       update(s=>{
@@ -1362,15 +1374,15 @@ function CourseView({tr, state, update, showToast, close}){
       {m.type==='quiz' ? <button onClick={()=>{ setShowResult(null); setAnswers({}); document.getElementById('quiz-area')?.scrollIntoView({behavior:'smooth'}); }} style={{background:'#4C8577',color:'#fff',border:'none',padding:'6px 10px',borderRadius:5,fontSize:11,cursor:'pointer'}}>Take Test</button> : <span style={{fontSize:11,background:'#EDEEF2',padding:'4px 8px',borderRadius:5}}>View</span>}
     </div>)}
     <div id="quiz-area" style={{marginTop:14,background:'#fff',border:'1px solid #ddd',borderRadius:8,padding:14}}>
-      <div style={{fontWeight:700,fontSize:13}}>Test — {tr.title} (70% to pass)</div>
+      <div style={{fontWeight:700,fontSize:13}}>Test — {tr.title} ({passPercent}% to pass)</div>
       {showResult ? <div style={{textAlign:'center',padding:16}}><div style={{fontSize:22,fontWeight:700,color: showResult.pass?'#4C8577':'#E2735B'}}>{showResult.pass?'Passed ✓':'Failed'}</div><div style={{fontFamily:'monospace',fontSize:18,marginTop:6}}>{showResult.score}%</div><div style={{fontSize:11,opacity:0.6,marginTop:4}}>{showResult.pass?'Certificate generated in Training → Certificates':'Try again — review modules'}</div><button onClick={()=>setShowResult(null)} style={{marginTop:10,background:'#201526',color:'#fff',border:'none',padding:'7px 12px',borderRadius:6,fontSize:12,cursor:'pointer'}}>Retake</button></div> :
       <div>
-        {quizQuestions.map((qq,i)=> <div key={i} style={{marginTop:10,padding:10,background:'rgba(32,21,38,0.04)',borderRadius:6}}>
+        {quizQuestions.map((qq,i)=> <div key={qq.id||i} style={{marginTop:10,padding:10,background:'rgba(32,21,38,0.04)',borderRadius:6}}>
           <div style={{fontSize:12,fontWeight:600}}>{i+1}. {qq.q}</div>
-          <div style={{display:'flex',gap:8,marginTop:6,flexWrap:'wrap'}}>{qq.a.map((opt,oi)=> <label key={oi} style={{fontSize:11,background: answers[i]===oi?'#201526':'#fff',color:answers[i]===oi?'#fff':'#201526',border:'1px solid #ddd',padding:'5px 10px',borderRadius:20,cursor:'pointer'}}><input type="radio" name={`q${i}`} checked={answers[i]===oi} onChange={()=>setAnswers({...answers,[i]:oi})} style={{display:'none'}}/>{opt}</label>)}</div>
+          <div style={{display:'flex',gap:8,marginTop:6,flexWrap:'wrap'}}>{qq.a.map((opt,oi)=> <label key={oi} style={{fontSize:11,background: answers[qq.id]===oi?'#201526':'#fff',color:answers[qq.id]===oi?'#fff':'#201526',border:'1px solid #ddd',padding:'5px 10px',borderRadius:20,cursor:'pointer'}}><input type="radio" name={`q${qq.id}`} checked={answers[qq.id]===oi} onChange={()=>setAnswers({...answers,[qq.id]:oi})} style={{display:'none'}}/>{opt}</label>)}</div>
         </div>)}
         <button onClick={submitQuiz} style={{marginTop:12,background:'#E2735B',color:'#fff',border:'none',padding:'8px 14px',borderRadius:6,fontSize:12,cursor:'pointer',width:'100%'}}>Submit Test</button>
-        <div style={{fontSize:10,opacity:0.55,marginTop:6}}>Both Staff and HR/Admin can take this test — same questions, offline scored, progress saved.</div>
+        <div style={{fontSize:10,opacity:0.55,marginTop:6}}>Employee exams are scored by the backend when cloud mode is active; offline demo exams are scored locally. Progress is saved with company training records.</div>
       </div>}
     </div>
     <div style={{marginTop:12,textAlign:'right'}}><button onClick={close} style={{background:'#201526',color:'#fff',border:'none',padding:'7px 12px',borderRadius:6,fontSize:12,cursor:'pointer'}}>Close</button></div>
@@ -1600,6 +1612,7 @@ function Modal({modal,setModal,state,update,showToast}){
             showToast('Enrolled — progress tracked'); close();
           }}>Enroll</button><button className="btn" style={{background:'transparent',border:'1px solid rgba(32,21,38,0.25)'}} onClick={close}>Cancel</button></div>
         </>}
+        {modal.type==='courseBuilder' && <TrainingCourseBuilder onCancel={close} onSave={(course)=>{ update(s=>{ s.trainings.push(course); }); showToast('Course created with exam and study material'); close(); }} />}
         {modal.type==='courseView' && <CourseView tr={state.trainings.find(t=>t.id===modal.data)} state={state} update={update} showToast={showToast} close={close} />}
         {modal.type==='leave' && <>
           <div className="field"><label>Staff</label><select value={form.employeeId||state.employees.filter(e=>e.active)[0]?.id} onChange={e=>setForm({...form,employeeId:e.target.value})} disabled={state.currentRole==='employee'}>{state.employees.filter(e=>e.active).map(e=> <option key={e.id} value={e.id}>{e.name}</option>)}</select></div>

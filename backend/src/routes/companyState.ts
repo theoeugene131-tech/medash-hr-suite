@@ -27,7 +27,7 @@ companyStateRouter.get("/", async (req: AuthedRequest, res) => {
   const employeeId = req.auth!.employeeId;
   return res.json({
     state: {
-      trainings: Array.isArray(state.trainings) ? state.trainings : [],
+      trainings: Array.isArray(state.trainings) ? state.trainings.map((training: any) => ({ ...training, questions: Array.isArray(training.questions) ? training.questions.map((question: any) => { const { correctIndex, ...publicQuestion } = question; return publicQuestion; }) : [] })) : [],
       leaves: (state.leaves || []).filter((item: any) => item.employeeId === employeeId),
       attendance: (state.attendance || []).filter((item: any) => item.employeeId === employeeId),
       enrollments: (state.enrollments || []).filter((item: any) => item.employeeId === employeeId),
