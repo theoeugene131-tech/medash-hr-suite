@@ -15,7 +15,7 @@ const REGIONS = {
     unavailable: ["Certified statutory payroll or tax filing", "Automatic bank payments or statutory remittances"],
   },
   GB: {
-    label: "United Kingdom",
+    label: "Europe/UK",
     currency: "GBP",
     locale: "en-GB",
     timezone: "Europe/London",
