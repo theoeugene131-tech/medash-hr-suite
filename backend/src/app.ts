@@ -6,6 +6,7 @@ import { payrollRouter } from "./routes/payroll.js";
 import { companyRouter } from "./routes/company.js";
 import { adminRouter } from "./routes/admin.js";
 import { companyStateRouter } from "./routes/companyState.js";
+import { trainingRouter } from "./routes/training.js";
 
 export const app = express();
 
@@ -19,6 +20,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/employees", employeesRouter);
 app.use("/api/payroll", payrollRouter);
 app.use("/api/company/state", companyStateRouter);
+app.use("/api/training", trainingRouter);
 app.use("/api/company", companyRouter);
 app.use("/api/admin", adminRouter);
 
