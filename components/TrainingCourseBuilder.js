@@ -49,7 +49,7 @@ export default function TrainingCourseBuilder({ onSave, onCancel }) {
     }
     const modules = draft.materials.split(/(?=MODULE\s+\d+\s*[—-])/i).map((part, index) => {
       const lines = part.trim().split("\n");
-      const hasHeading = /^MODULE\\s+\\d+/i.test(lines[0]?.trim() || "");
+      const hasHeading = /^MODULE\s+\d+/i.test(lines[0]?.trim() || "");
       const title = hasHeading ? lines[0].trim() : `Module ${index + 1}`;
       const content = hasHeading ? lines.slice(1).join("\n").trim() : part.trim();
       return { id: `module-${index + 1}-${Math.random().toString(36).slice(2, 6)}`, title, type: "doc", content, duration: "15m" };

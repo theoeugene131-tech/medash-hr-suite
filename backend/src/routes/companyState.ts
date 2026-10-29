@@ -58,7 +58,7 @@ companyStateRouter.put("/", async (req: AuthedRequest, res) => {
     const employeeId = req.auth!.employeeId;
     const existingState = (current?.state || {}) as Record<string, any>;
     nextState = { ...existingState };
-    for (const field of ["leaves", "attendance", "enrollments", "certificates"] as const) {
+    for (const field of ["leaves", "attendance"] as const) {
       const oldRows = Array.isArray(existingState[field]) ? existingState[field] : [];
       const incomingRows = Array.isArray(incoming[field]) ? incoming[field] as any[] : [];
       const otherEmployees = oldRows.filter((item: any) => item.employeeId !== employeeId);
@@ -71,6 +71,9 @@ companyStateRouter.put("/", async (req: AuthedRequest, res) => {
       }
       nextState[field] = [...otherEmployees, ...ownRows];
     }
+    // Only server-side exam scoring may change training scores, completion, or certificates.
+    nextState.enrollments = Array.isArray(existingState.enrollments) ? existingState.enrollments : [];
+    nextState.certificates = Array.isArray(existingState.certificates) ? existingState.certificates : [];
   } else {
     nextState = { ...(current?.state || {}), ...incoming };
   }

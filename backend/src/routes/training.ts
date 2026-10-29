@@ -83,11 +83,16 @@ trainingRouter.post("/submit", async (req: AuthedRequest, res) => {
     if (!training || !Array.isArray(training.questions) || training.questions.length === 0) {
       return res.status(404).json({ error: "This course does not have a saved exam yet. Ask HR to update the course." });
     }
+    let employeeId: string | null = null;
     if (req.auth!.role === "employee") {
-      const employee = await db.findForCompany("employees", req.auth!.employeeId || "", req.auth!.companyId);
+      employeeId = req.auth!.employeeId || null;
+      if (!employeeId) return res.status(403).json({ error: "Your employee account could not be verified." });
+      const employee = await db.findForCompany("employees", employeeId, req.auth!.companyId);
       if (!employee) return res.status(403).json({ error: "Your employee account could not be verified." });
     }
     const questions = training.questions as Array<{ id?: string; text: string; options: string[]; correctIndex: number }>;
+    const allowedKeys = new Set(questions.map((question, index) => question.id || String(index)));
+    if (Object.keys(parsed.data.answers).some((key) => !allowedKeys.has(key))) return res.status(400).json({ error: "The submitted answers do not match this exam." });
     for (let index = 0; index < questions.length; index++) {
       const key = questions[index].id || String(index);
       if (parsed.data.answers[key] === undefined) return res.status(400).json({ error: "Please answer every question before submitting." });
@@ -95,7 +100,37 @@ trainingRouter.post("/submit", async (req: AuthedRequest, res) => {
     const correctCount = questions.reduce((sum, question, index) => sum + (parsed.data.answers[question.id || String(index)] === question.correctIndex ? 1 : 0), 0);
     const percent = Math.round((correctCount / questions.length) * 100);
     const passPercent = Number.isInteger(training.passPercent) ? training.passPercent : 70;
-    return res.json({ result: { score: percent, percent, correctCount, total: questions.length, passed: percent >= passPercent, passPercent } });
+    const passed = percent >= passPercent;
+    let certificate: Record<string, any> | null = null;
+    if (employeeId) {
+      const enrollments = Array.isArray(state!.enrollments) ? [...state!.enrollments] : [];
+      let enrollment = enrollments.find((item: any) => item.employeeId === employeeId && item.trainingId === training.id);
+      if (!enrollment) {
+        enrollment = { id: "enrollment-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8), employeeId, trainingId: training.id, progress: 0, completedModules: [], enrolledAt: new Date().toISOString().slice(0, 10), completedAt: null, score: null, certificateId: null, attempts: 0 };
+        enrollments.push(enrollment);
+      }
+      enrollment.attempts = (Number(enrollment.attempts) || 0) + 1;
+      enrollment.lastAttemptAt = new Date().toISOString();
+      enrollment.lastScore = percent;
+      enrollment.score = percent;
+      if (passed) {
+        const moduleIds = Array.isArray(training.modules) ? training.modules.map((module: any) => module.id).filter(Boolean) : [];
+        enrollment.completedModules = [...new Set([...(Array.isArray(enrollment.completedModules) ? enrollment.completedModules : []), ...moduleIds])];
+        enrollment.progress = 100;
+        enrollment.completedAt = enrollment.completedAt || new Date().toISOString().slice(0, 10);
+        const certificates = Array.isArray(state!.certificates) ? [...state!.certificates] : [];
+        certificate = certificates.find((item: any) => item.employeeId === employeeId && item.trainingId === training.id) || null;
+        if (!certificate) {
+          certificate = { id: "certificate-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8), employeeId, trainingId: training.id, issuedAt: new Date().toISOString().slice(0, 10), score: percent };
+          certificates.push(certificate);
+        } else certificate.score = Math.max(Number(certificate.score) || 0, percent);
+        enrollment.certificateId = certificate.id;
+        state!.certificates = certificates;
+      }
+      state!.enrollments = enrollments;
+      await db.updateForCompany("companyState", req.auth!.companyId, req.auth!.companyId, { state, updatedAt: new Date().toISOString() });
+    }
+    return res.json({ result: { score: percent, percent, correctCount, total: questions.length, passed, passPercent, certificate } });
   } catch (error) {
     console.error("Training exam scoring failed:", error);
     return res.status(500).json({ error: "Could not score the exam. Please try again." });
