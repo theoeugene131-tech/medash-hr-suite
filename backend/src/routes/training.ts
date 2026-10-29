@@ -16,7 +16,7 @@ publicTrainingRouter.post("/course", async (req, res) => {
   const code = cleanAccessCode(req.body?.code);
   if (!code) return res.status(400).json({ error: "Enter a training access code." });
   try {
-    const access = ((await db.table("trainingAccessCodes")) as any[]).find((item) => item.code === code && !item.revokedAt);
+    const access = await db.findByField("trainingAccessCodes", "code", code);
     if (!access) return res.status(404).json({ error: "This access code is invalid or has been disabled." });
     const record = await db.findForCompany("companyState", access.companyId, access.companyId);
     const state = record?.state as Record<string, any> | undefined;
@@ -142,6 +142,7 @@ trainingRouter.post("/access", requireAdmin, async (req: AuthedRequest, res) => 
     const state = record?.state as Record<string, any> | undefined;
     const course = Array.isArray(state?.trainings) ? state!.trainings.find((item: any) => item.id === parsed.data.trainingId) : null;
     if (!course) return res.status(404).json({ error: "Course not found in your company." });
+    if (!Array.isArray(course.questions) || course.questions.length === 0) return res.status(400).json({ error: "Add exam questions to this course before sharing external access." });
     const existing = ((await db.table("trainingAccessCodes", req.auth!.companyId)) as any[]).find((item) => item.trainingId === course.id && !item.revokedAt);
     if (existing) return res.json({ access: existing, url: `${process.env.APP_URL || process.env.FRONTEND_URL || ""}/training-access?code=${existing.code}` });
     const code = randomBytes(6).toString("hex").toUpperCase();
