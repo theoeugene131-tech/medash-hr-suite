@@ -2,8 +2,9 @@
 import { useEffect, useState } from "react";
 import { loadState, saveState } from "@/lib/store";
 import { normalizeKey, isValidFormat, getStoredKey, saveLicense, clearLicense } from "@/lib/license";
-import { getApiBase, setApiBaseOverride, getToken, setSession, getSessionUser, clearSession, AuthAPI, EmployeesAPI, PayrollAPI, CompanyAPI, CompanyStateAPI } from "@/lib/api";
+import { getApiBase, setApiBaseOverride, getToken, setSession, getSessionUser, clearSession, AuthAPI, EmployeesAPI, PayrollAPI, CompanyAPI, CompanyStateAPI, api } from "@/lib/api";
 import CountrySettings from "@/components/CountrySettings";
+import TrainingCourseBuilder from "@/components/TrainingCourseBuilder";
 import { formatMoney, formatDate, getCurrencySymbol, getCountryOptions } from "@/lib/region";
 
 const AVATAR_COLORS = ['#E2735B','#C9A227','#4C8577','#7D6BA6','#B3563F','#3E7C8A'];
@@ -864,7 +865,7 @@ function Training({state,update,setModal,showToast}){
   const certCount=visibleCerts.length;
   return (<>
     <div className="panel-head"><div><h2>Training Suite</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>{isEmployee? 'Your courses — learn offline, get certified' : 'Courses + Assignments + Progress + Certificates — offline & printable'}</p></div>
-      {!isEmployee && <div style={{display:'flex',gap:8}}><button className="btn btn-primary" onClick={()=>setModal({type:'course'})}>+ New course</button><button className="btn" style={{background:'#fff',color:'#201526'}} onClick={()=>setModal({type:'enroll'})}>+ Enroll staff</button></div>}
+      {!isEmployee && <div style={{display:'flex',gap:8}}><button className="btn btn-primary" onClick={()=>setModal({type:'courseBuilder'})}>+ Course builder</button><button className="btn" onClick={()=>setModal({type:'course'})}>+ Quick course</button><button className="btn" style={{background:'#fff',color:'#201526'}} onClick={()=>setModal({type:'enroll'})}>+ Enroll staff</button></div>}
       {isEmployee && <div style={{fontSize:11,color:'var(--muted)',background:'rgba(237,238,242,0.08)',padding:'6px 10px',borderRadius:20}}>Employee view — contact HR to enroll</div>}
     </div>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:12,marginBottom:14}}>
