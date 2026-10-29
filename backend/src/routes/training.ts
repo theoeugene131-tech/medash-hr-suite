@@ -52,6 +52,8 @@ publicTrainingRouter.post("/submit", async (req, res) => {
     if (Object.keys(answers).some((key) => !allowedKeys.has(key))) return res.status(400).json({ error: "Your answers do not match this exam." });
     for (let i = 0; i < questions.length; i++) if (answers[questions[i].id || String(i)] === undefined) return res.status(400).json({ error: "Please answer every question." });
     const previous = ((await db.table("externalTrainingSubmissions", access.companyId)) as any[]).filter((item) => item.accessCodeId === access.id && item.email === parsed.data.email.trim().toLowerCase());
+    const maxAttempts = Number.isInteger(course.attemptsPerRound) && course.attemptsPerRound > 0 ? course.attemptsPerRound : 3;
+    if (previous.length >= maxAttempts) return res.status(403).json({ error: `You have used all ${maxAttempts} exam attempts for this course.` });
     if (Number.isInteger(access.seatLimit) && access.seatLimit > 0) {
       const distinctEmails = new Set(((await db.table("externalTrainingSubmissions", access.companyId)) as any[]).filter((item) => item.accessCodeId === access.id).map((item) => item.email));
       if (!distinctEmails.has(parsed.data.email.trim().toLowerCase()) && distinctEmails.size >= access.seatLimit) return res.status(403).json({ error: "This course has reached its trainee limit. Contact the training administrator." });
