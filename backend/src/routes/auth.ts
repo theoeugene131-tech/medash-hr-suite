@@ -13,7 +13,7 @@ const signupSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   password: z.string().min(8),
-  countryCode: z.enum(["NG", "GB", "US"]).optional().default("NG"),
+  countryCode: z.string().regex(/^[A-Z]{2}$/).optional().default("NG"),
 });
 
 // Creates a company + its first "owner" login. This replaces the old
@@ -25,7 +25,7 @@ authRouter.post("/signup", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { companyName, name, password, countryCode } = parsed.data;
   const email = parsed.data.email.trim().toLowerCase();
-  const region = ({ NG: { currency: "NGN", locale: "en-NG", timezone: "Africa/Lagos" }, GB: { currency: "GBP", locale: "en-GB", timezone: "Europe/London" }, US: { currency: "USD", locale: "en-US", timezone: "America/New_York" } } as const)[countryCode];
+  const region = ({ NG: { currency: "NGN", locale: "en-NG", timezone: "Africa/Lagos" }, GB: { currency: "GBP", locale: "en-GB", timezone: "Europe/London" }, US: { currency: "USD", locale: "en-US", timezone: "America/New_York" }, CA: { currency: "CAD", locale: "en-CA", timezone: "America/Toronto" }, AU: { currency: "AUD", locale: "en-AU", timezone: "Australia/Sydney" }, NZ: { currency: "NZD", locale: "en-NZ", timezone: "Pacific/Auckland" }, IE: { currency: "EUR", locale: "en-IE", timezone: "Europe/Dublin" }, GH: { currency: "GHS", locale: "en-GH", timezone: "Africa/Accra" }, KE: { currency: "KES", locale: "en-KE", timezone: "Africa/Nairobi" }, ZA: { currency: "ZAR", locale: "en-ZA", timezone: "Africa/Johannesburg" } } as Record<string, { currency: string; locale: string; timezone: string }>)[countryCode] || { currency: "USD", locale: "en", timezone: "UTC" };
 
   const existing = ((await db.table("users")) as any[]).find((u) => String(u.email).toLowerCase() === email);
   if (existing) return res.status(409).json({ error: "An account with that email already exists" });
