@@ -4,7 +4,7 @@ import { loadState, saveState } from "@/lib/store";
 import { normalizeKey, isValidFormat, getStoredKey, saveLicense, clearLicense } from "@/lib/license";
 import { getApiBase, setApiBaseOverride, getToken, setSession, getSessionUser, clearSession, AuthAPI, EmployeesAPI, PayrollAPI, CompanyAPI, CompanyStateAPI } from "@/lib/api";
 import CountrySettings from "@/components/CountrySettings";
-import { formatMoney, formatDate, getCurrencySymbol } from "@/lib/region";
+import { formatMoney, formatDate, getCurrencySymbol, getCountryOptions } from "@/lib/region";
 
 const AVATAR_COLORS = ['#E2735B','#C9A227','#4C8577','#7D6BA6','#B3563F','#3E7C8A'];
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -28,7 +28,7 @@ const TAB_LABELS = {
   overview:'Overview', team:'Team', docs:'Documents', regulatory:'Regulatory', training:'Training', leave:'Leave', attendance:'Attendance', org:'Org Chart', runpayroll:'Run payroll', history:'Payroll history',
   compliance:'Compliance', reviews:'Performance reviews', hiring:'Hiring', reports:'Reports', myprofile:'My profile', settings:'Country & Region'
 };
-const COUNTRY_LABELS = { NG:'Nigeria', GB:'United Kingdom', UK:'United Kingdom', US:'United States' };
+const COUNTRY_LABELS = { NG:'Nigeria', GB:'Europe/UK', UK:'Europe/UK', US:'United States' };
 const NAV_GROUPS = [
   { key:'overview', label:'Overview', description:'See the company snapshot, team size, monthly gross payroll, next payroll period and internal tracking items.', tabs:['overview'] },
   { key:'hr', label:'HR Workspace', description:'Manage team records, onboarding documents, training, leave, attendance, org chart, hiring, reviews and employee profiles.', tabs:['team','docs','training','leave','attendance','org','reviews','hiring','myprofile'] },
@@ -1404,7 +1404,7 @@ function AuthScreen({authForm,setAuthForm,onAuth,showToast}){
         </div>
         <form onSubmit={submit}>
           {f.mode==='signup' && <><div className="field"><label>Company name</label><input value={f.companyName} onChange={e=>setAuthForm({...f,companyName:e.target.value})} placeholder="e.g. GreenField Ltd"/></div>
-          <div className="field"><label>Company country</label><select value={f.countryCode||"NG"} onChange={e=>setAuthForm({...f,countryCode:e.target.value})}><option value="NG">Nigeria</option><option value="GB">United Kingdom</option><option value="US">United States</option></select></div>
+          <div className="field"><label>Company country</label><select value={f.countryCode||"NG"} onChange={e=>setAuthForm({...f,countryCode:e.target.value})}>{getCountryOptions().map(country=><option key={country.countryCode} value={country.countryCode}>{country.countryCode==="GB"?"Europe/UK":country.label}</option>)}</select></div>
           <div className="field"><label>Your name</label><input value={f.name} onChange={e=>setAuthForm({...f,name:e.target.value})} placeholder="e.g. Ada Obi"/></div></>}
           <div className="field"><label>Email</label><input value={f.email} onChange={e=>setAuthForm({...f,email:e.target.value})} placeholder="you@company.com"/></div>
           <div className="field"><label>Password (8+ chars)</label><input type="password" value={f.password} onChange={e=>setAuthForm({...f,password:e.target.value})}/></div>
