@@ -26,12 +26,12 @@ const DOC_TYPES = [
   {key:'annual', label:'Annual Appraisal', category:'Appraisals', required:false},
 ];
 const TAB_LABELS = {
-  overview:'Overview', team:'Team', docs:'Documents', regulatory:'Regulatory', training:'Training', leave:'Leave', attendance:'Attendance', org:'Org Chart', runpayroll:'Run payroll', history:'Payroll history',
+  overview:'Home', team:'Team', docs:'Documents', regulatory:'Regulatory', training:'Training', leave:'Leave', attendance:'Attendance', org:'Org Chart', runpayroll:'Run payroll', history:'Payroll history',
   compliance:'Compliance', reviews:'Performance reviews', hiring:'Hiring', reports:'Reports', myprofile:'My profile', settings:'Country & Region'
 };
 const COUNTRY_LABELS = { NG:'Nigeria', GB:'Europe/UK', UK:'Europe/UK', US:'United States' };
 const NAV_GROUPS = [
-  { key:'overview', label:'Overview', description:'See the company snapshot, team size, monthly gross payroll, next payroll period and internal tracking items.', tabs:['overview'] },
+  { key:'overview', label:'Home', description:'Your HR workspace at a glance: team activity, key people information and items that need attention.', tabs:['overview'] },
   { key:'hr', label:'HR Workspace', description:'Manage team records, onboarding documents, training, leave, attendance, org chart, hiring, reviews and employee profiles.', tabs:['team','docs','training','leave','attendance','org','reviews','hiring','myprofile'] },
   { key:'payroll', label:'Payroll & Compliance', description:'Enter or import payroll, review payroll history and reports, and set your country. Statutory estimates are paused pending validation.', tabs:['runpayroll','history','regulatory','compliance','reports','settings'] }
 ];
@@ -563,7 +563,7 @@ export default function Page(){
       </nav>
 
       <main>
-        {currentTab==='overview' && <Overview state={state} setModal={setModal} />}
+        {currentTab==='overview' && <HomePage state={state} setModal={setModal} />}
         {currentTab==='team' && <Team state={state} update={update} setModal={setModal} showToast={showToast} />}
         {currentTab==='docs' && <Documents state={state} update={update} setModal={setModal} showToast={showToast} docFilter={docFilter} setDocFilter={setDocFilter} />}
         {currentTab==='regulatory' && <Regulatory state={state} update={update} />}
@@ -589,7 +589,7 @@ export default function Page(){
   );
 }
 
-function Overview({state,setModal}){
+function HomePage({state,setModal}){
   const lastRun=state.runs[state.runs.length-1];
   const items=[{key:'paye',what:'PAYE remittance',agency:'State IRS'},{key:'pension',what:'Pension remittance',agency:'PenCom / PFA'},{key:'nhf',what:'NHF remittance',agency:'Federal Mortgage Bank'},{key:'nsitf',what:'NSITF contribution',agency:'NSITF'}];
   const celebs=(()=>{
@@ -603,6 +603,11 @@ function Overview({state,setModal}){
   })();
   const docCompletion = state.employees.length? Math.round(100 * state.employees.reduce((s,e)=> s + DOC_TYPES.filter(dt=> e.documents?.[dt.key]).length / DOC_TYPES.length,0)/state.employees.length):0;
   return (<>
+    <section style={{marginBottom:24,padding:'22px 24px',background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:10}}>
+      <div style={{fontSize:10,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--muted)',fontWeight:700}}>HOME</div>
+      <h2 style={{fontFamily:'Newsreader, serif',fontSize:30,fontWeight:600,margin:'5px 0 4px'}}>Welcome to Medash HR Suite</h2>
+      <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.6,margin:0}}>Your workplace at a glance. Manage your people, keep track of important tasks and access your HR tools from one place.</p>
+    </section>
     {celebs.length>0 && <><div className="panel-head"><div><h2>Upcoming celebrations</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Birthdays and work anniversaries in next 30 days</p></div></div>
     <div style={{display:'flex',gap:12,overflowX:'auto',paddingBottom:6,marginBottom:32}}>{celebs.map((c,i)=><div key={i} style={{flex:'0 0 auto',minWidth:200,background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:'14px 16px',display:'flex',gap:12,alignItems:'center'}}><span style={{fontSize:22}}>{c.emoji}</span><div><div style={{fontSize:12.5,fontWeight:600}}>{c.what}</div><div style={{fontSize:11,color:'var(--muted)'}}>{c.when}</div></div></div>)}</div></>}
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12,marginBottom:24}}>
