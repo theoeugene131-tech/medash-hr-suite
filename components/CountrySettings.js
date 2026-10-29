@@ -62,7 +62,7 @@ export default function CountrySettings({ state, update, showToast, cloudMode = 
     const next = { ...regionForCountry(nextCode), ...(REGIONS[nextCode] || {}) };
     if (cloudMode) {
       try {
-        await CompanyAPI.updateRegion(nextCode);
+        await CompanyAPI.updateRegion(nextCode, next.currency);
       } catch (error) {
         if (showToast) showToast(error.message || "Could not save company region to the cloud.");
         return;
