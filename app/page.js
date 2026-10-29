@@ -851,6 +851,25 @@ function printCertificate({companyName, cert, employee, training}){
 }
 function Training({state,update,setModal,showToast}){
   const [tab,setTab]=useState('catalog');
+  const [externalResults,setExternalResults]=useState([]);
+  const [externalLoading,setExternalLoading]=useState(false);
+  const [externalError,setExternalError]=useState('');
+  useEffect(()=>{
+    if(tab!=='external') return;
+    let active=true;
+    setExternalLoading(true); setExternalError('');
+    api('/api/training/external-results').then(data=>{ if(active) setExternalResults(data.results||[]); }).catch(err=>{ if(active) setExternalError(err.message||'Could not load external training results.'); }).finally(()=>{ if(active) setExternalLoading(false); });
+    return ()=>{ active=false; };
+  },[tab]);
+  async function createExternalAccess(training){
+    try{
+      const data=await api('/api/training/access',{method:'POST',body:{trainingId:training.id}});
+      const url=window.location.origin+'/training-access?code='+encodeURIComponent(data.access.code);
+      const message='External training link for '+training.title+':\\n'+url+'\\nAccess code: '+data.access.code+'\\nShare this link and code with trainees.';
+      try{ await navigator.clipboard.writeText(url); alert(message+'\\n\\nLink copied to clipboard.'); }
+      catch{ alert(message); }
+    }catch(err){ showToast(err.message||'Could not create external training access.'); }
+  }
   const isEmployee=state.currentRole==='employee';
   const myId=state.viewingEmployeeId||state.employees[0]?.id;
   // force trainings to exist — if corrupted localStorage, seed robust 6
@@ -876,9 +895,20 @@ function Training({state,update,setModal,showToast}){
       <div style={{background:'var(--paper)',color:'#201526',borderRadius:8,padding:12}}><div style={{fontSize:10,opacity:0.55,textTransform:'uppercase'}}>Certificates</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{certCount}</div></div>
     </div>
     <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
-      {['catalog','enrollments','certificates'].map(t=> <button key={t} onClick={()=>setTab(t)} style={{padding:'6px 12px',borderRadius:20,fontSize:12,border:'1px solid var(--line)',background:tab===t?'var(--paper)':'transparent',color:tab===t?'#201526':'var(--muted)',cursor:'pointer',textTransform:'capitalize'}}>{t}</button>)}
+      {['catalog','enrollments','certificates',...(!isEmployee?['external']:[])].map(t=> <button key={t} onClick={()=>setTab(t)} style={{padding:'6px 12px',borderRadius:20,fontSize:12,border:'1px solid var(--line)',background:tab===t?'var(--paper)':'transparent',color:tab===t?'#201526':'var(--muted)',cursor:'pointer',textTransform:'capitalize'}}>{t}</button>)}
     </div>
 
+    {tab==='external' && !isEmployee && <div className="card" style={{gap:10}}>
+      <div style={{fontWeight:700,fontSize:15}}>External trainee results</div>
+      <div style={{fontSize:12,color:'var(--muted)'}}>Results are limited to access codes created by your company. External trainees do not receive employee account access.</div>
+      {externalLoading && <p style={{fontSize:12}}>Loading results…</p>}
+      {externalError && <p style={{fontSize:12,color:'#B23A2E'}}>{externalError}</p>}
+      {!externalLoading && !externalError && externalResults.length===0 && <p style={{fontSize:12,color:'var(--muted)'}}>No external exam submissions yet. Open Catalog and create an external access link for a course.</p>}
+      {externalResults.length>0 && <div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+        <thead><tr>{['Trainee','Email','Course','Score','Result','Attempt','Submitted'].map(h=><th key={h} style={{textAlign:'left',padding:'8px 6px',borderBottom:'1px solid var(--line)'}}>{h}</th>)}</tr></thead>
+        <tbody>{externalResults.map(row=><tr key={row.id}><td style={{padding:'8px 6px',borderBottom:'1px solid var(--line)'}}>{row.traineeName}</td><td style={{padding:'8px 6px',borderBottom:'1px solid var(--line)'}}>{row.email}</td><td style={{padding:'8px 6px',borderBottom:'1px solid var(--line)'}}>{row.courseTitle}</td><td style={{padding:'8px 6px',borderBottom:'1px solid var(--line)'}}>{row.percent}% ({row.score}/{row.total})</td><td style={{padding:'8px 6px',borderBottom:'1px solid var(--line)',color:row.passed?'#28765e':'#B23A2E'}}>{row.passed?'Passed':'Not passed'}</td><td style={{padding:'8px 6px',borderBottom:'1px solid var(--line)'}}>{row.attempt}</td><td style={{padding:'8px 6px',borderBottom:'1px solid var(--line)'}}>{new Date(row.submittedAt).toLocaleString()}</td></tr>)}</tbody>
+      </table></div>}
+    </div>}
     {tab==='catalog' && <div className="grid">
       {state.trainings.map(tr=>{
         const enrolled=state.enrollments.filter(e=>e.trainingId===tr.id).length;
@@ -890,6 +920,7 @@ function Training({state,update,setModal,showToast}){
           <div style={{fontSize:11,opacity:0.65}}>{tr.modules.length} modules: {tr.modules.map(m=>m.title).join(' · ')}</div>
           <div style={{display:'flex',gap:6,marginTop:4,flexWrap:'wrap'}}>
             <button onClick={()=>setModal({type:'courseView', data:tr.id})} style={{background:'#fff',border:'1px solid #ddd',borderRadius:5,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>View & Take Test{hasQuiz?' 📝':''}</button>
+            {!isEmployee && <button onClick={()=>createExternalAccess(tr)} style={{background:'#286c62',color:'#fff',border:'none',borderRadius:5,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>Share external access</button>}
             {isEmployee ? (
               myEnroll? <span style={{fontSize:11,background:myEnroll.progress===100?'#4C8577':'#E2735B',color:'#fff',padding:'6px 10px',borderRadius:5}}>{myEnroll.progress===100?'Completed ✓':`${myEnroll.progress}% — Enrolled`}</span>
               : <button onClick={()=>{ update(s=>{ s.enrollments.push({id:uid(), employeeId:myId, trainingId:tr.id, progress:0, completedModules:[], enrolledAt:new Date().toISOString().slice(0,10), completedAt:null, score:null, certificateId:null}); }); showToast('Enrolled — open View & Take Test to start'); }} style={{background:'var(--teal)',color:'#fff',border:'none',borderRadius:5,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>Enroll me</button>
