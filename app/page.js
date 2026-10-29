@@ -864,7 +864,7 @@ function Training({state,update,setModal,showToast}){
   async function createExternalAccess(training){
     const rawLimit=window.prompt('Maximum external trainees for '+training.title+'? Leave blank for unlimited.','');
     if(rawLimit===null) return;
-    const body={trainingId:training.id};
+    const body={trainingId:training.id,seatLimit:null};
     if(rawLimit.trim()){
       const seatLimit=Number(rawLimit);
       if(!Number.isInteger(seatLimit)||seatLimit<1){ alert('Enter a whole number of at least 1, or leave the limit blank.'); return; }
