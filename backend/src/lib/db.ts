@@ -7,6 +7,7 @@ export async function ensureSchema() {
   }
   await pool.query("CREATE TABLE IF NOT EXISTS records (table_name TEXT NOT NULL, id TEXT NOT NULL, company_id TEXT, data JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (table_name, id))");
   await pool.query("CREATE INDEX IF NOT EXISTS idx_records_table_company ON records (table_name, company_id)");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_training_access_code ON records ((data ->> 'code')) WHERE table_name = 'trainingAccessCodes'");
 }
 export const db = {
   async table(name: string, companyId?: string): Promise<any[]> {
@@ -57,6 +58,10 @@ export const db = {
   },
   async find(name: string, id: string) {
     const result = await pool.query("SELECT data FROM records WHERE table_name = $1 AND id = $2", [name, id]);
+    return result.rowCount ? result.rows[0].data : null;
+  },
+  async findByField(name: string, field: string, value: string) {
+    const result = await pool.query("SELECT data FROM records WHERE table_name = $1 AND data ->> $2 = $3 LIMIT 1", [name, field, value]);
     return result.rowCount ? result.rows[0].data : null;
   },
   async delete(name: string, id: string) {
