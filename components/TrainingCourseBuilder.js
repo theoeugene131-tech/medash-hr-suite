@@ -49,8 +49,10 @@ export default function TrainingCourseBuilder({ onSave, onCancel }) {
     }
     const modules = draft.materials.split(/(?=MODULE\s+\d+\s*[—-])/i).map((part, index) => {
       const lines = part.trim().split("\n");
-      const title = lines[0]?.trim() || `Module ${index + 1}`;
-      return { id: `module-${index + 1}-${Math.random().toString(36).slice(2, 6)}`, title, type: "doc", content: lines.slice(1).join("\n").trim() || part.trim(), duration: "15m" };
+      const hasHeading = /^MODULE\\s+\\d+/i.test(lines[0]?.trim() || "");
+      const title = hasHeading ? lines[0].trim() : `Module ${index + 1}`;
+      const content = hasHeading ? lines.slice(1).join("\n").trim() : part.trim();
+      return { id: `module-${index + 1}-${Math.random().toString(36).slice(2, 6)}`, title, type: "doc", content, duration: "15m" };
     }).filter((module) => module.content);
     const quizModule = { id: `quiz-${Math.random().toString(36).slice(2, 8)}`, title: "Final assessment", type: "quiz", content: `${draft.questions.length} questions · ${draft.passPercent}% pass mark`, duration: "20m" };
     onSave({ ...draft, id: `course-${Math.random().toString(36).slice(2, 10)}`, createdAt: new Date().toISOString().slice(0, 10), modules: [...modules, quizModule] });
