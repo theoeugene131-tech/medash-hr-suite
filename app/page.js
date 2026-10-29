@@ -849,6 +849,57 @@ function printCertificate({companyName, cert, employee, training}){
   </div></body></html>`);
   w.document.close();
 }
+const libraryTemplates = [
+  {key:'workplace-conduct-v1',title:'Workplace Conduct & Respect',category:'Compliance',duration:'45m',description:'A practical introduction to respectful conduct, reporting concerns, anti-harassment principles, and professional communication.',passPercent:70,attemptsPerRound:3,materials:`MODULE 1 — RESPECTFUL WORKPLACE
+Treat colleagues, customers, and contractors with dignity. Avoid bullying, harassment, discrimination, threats, and humiliating behaviour. Professional disagreement is acceptable; personal attacks are not.
+
+MODULE 2 — EVERYDAY CONDUCT
+Communicate clearly, respect boundaries, protect confidential discussions, and follow reasonable workplace policies. Managers should model the standards they expect from their teams.
+
+MODULE 3 — RAISING A CONCERN
+Record relevant facts and dates, preserve appropriate evidence, and use the reporting channel described in your organisation's policy. Escalate urgent safety risks promptly. Do not retaliate against someone who raises a concern in good faith.`,questions:[
+    {id:'q1',text:'Which behaviour best supports a respectful workplace?',options:['Personal attacks during disagreement','Treating colleagues with dignity','Sharing private staff details','Ignoring reports of harassment'],correctIndex:1},
+    {id:'q2',text:'What is a useful first step when documenting a concern?',options:['Post it publicly','Delete related messages','Record relevant facts and dates','Confront everyone involved'],correctIndex:2},
+    {id:'q3',text:'How should a good-faith report be treated?',options:['With protection from retaliation','As automatic proof of guilt','As a reason to reduce shifts','As information to spread widely'],correctIndex:0}
+  ]},
+  {key:'data-protection-v1',title:'Data Protection & Confidentiality',category:'Data protection',duration:'50m',description:'Core practices for handling employee, customer, and business information responsibly across different jurisdictions.',passPercent:70,attemptsPerRound:3,materials:`MODULE 1 — HANDLE DATA LAWFULLY
+Collect personal information only for a clear business purpose and follow the laws and policies that apply to your organisation. Use only the information needed for the task.
+
+MODULE 2 — KEEP INFORMATION SECURE
+Use approved systems, strong unique passwords, multi-factor authentication where available, and access only the records required for your role. Do not send confidential files to personal accounts without authorisation.
+
+MODULE 3 — RETENTION AND INCIDENTS
+Follow approved retention and deletion schedules. If information is lost, sent to the wrong recipient, or accessed without permission, report it promptly through your organisation's incident process. Do not conceal or independently investigate a suspected breach beyond your role.`,questions:[
+    {id:'q1',text:'What is data minimisation?',options:['Collect every available detail','Keep all data forever','Collect only what is needed for a clear purpose','Share data with every team'],correctIndex:2},
+    {id:'q2',text:'You receive a file containing personal data you do not need. What should you do?',options:['Forward it to friends','Follow company policy and avoid unnecessary access or sharing','Upload it to a public drive','Keep a personal copy'],correctIndex:1},
+    {id:'q3',text:'What should you do after discovering a possible data incident?',options:['Delete all evidence immediately','Wait until someone asks','Post details online','Report it promptly using the approved process'],correctIndex:3}
+  ]},
+  {key:'cybersecurity-v1',title:'Cybersecurity Awareness',category:'Compliance',duration:'40m',description:'Recognise phishing, protect accounts and devices, and respond safely to suspicious activity.',passPercent:70,attemptsPerRound:3,materials:`MODULE 1 — RECOGNISE PHISHING
+Be cautious with unexpected urgency, unusual payment requests, unfamiliar links, attachments, and messages that ask for credentials. Verify requests using a trusted contact method rather than replying to the suspicious message.
+
+MODULE 2 — PROTECT ACCOUNTS AND DEVICES
+Use unique passwords and multi-factor authentication where available. Lock your screen, install approved updates, and use authorised software and storage. Never share passwords or one-time authentication codes.
+
+MODULE 3 — RESPOND TO SUSPICIOUS ACTIVITY
+Do not click further or forward suspicious attachments. Report the message or incident to the designated IT/security contact. If you entered credentials, report it immediately and follow instructions to secure the account.`,questions:[
+    {id:'q1',text:'An unexpected email demands an urgent password reset through a link. What is safest?',options:['Click immediately','Reply with your password','Verify through a trusted channel and report if suspicious','Forward it to all colleagues'],correctIndex:2},
+    {id:'q2',text:'Which practice best protects accounts?',options:['Reuse one password everywhere','Share one-time codes with a caller','Store passwords in a public note','Use unique passwords and multi-factor authentication'],correctIndex:3},
+    {id:'q3',text:'What should you do if you entered your password on a suspicious site?',options:['Report it immediately and follow account-security steps','Ignore it','Delete the email and tell nobody','Wait a month'],correctIndex:0}
+  ]},
+  {key:'health-safety-v1',title:'Workplace Health & Safety Basics',category:'Safety',duration:'45m',description:'Identify common hazards, follow safe procedures, and report incidents and near misses.',passPercent:70,attemptsPerRound:3,materials:`MODULE 1 — IDENTIFY HAZARDS
+Look for unsafe conditions such as blocked exits, spills, damaged equipment, poor ergonomics, and exposed cables. Follow local safety instructions and do not undertake work you are not trained or authorised to perform.
+
+MODULE 2 — PREVENT HARM
+Use required protective equipment, keep walkways clear, use equipment as instructed, and take appropriate breaks. Stop and seek guidance when a task appears unsafe.
+
+MODULE 3 — REPORT AND RESPOND
+Follow your workplace emergency plan. Report injuries, hazards, and near misses promptly, even when no one appears to be hurt. In an emergency, alert the appropriate responders and do not put yourself at unnecessary risk.`,questions:[
+    {id:'q1',text:'What should you do if you find a blocked emergency exit?',options:['Ignore it if the office is quiet','Report it and follow the procedure to clear the hazard safely','Put boxes in front of it','Wait for an inspection'],correctIndex:1},
+    {id:'q2',text:'Should a near miss be reported?',options:['Only if equipment is destroyed','Never','Yes, promptly using the workplace process','Only at year end'],correctIndex:2},
+    {id:'q3',text:'What is the safest response to a task you are not trained to do?',options:['Attempt it quickly','Copy a colleague without asking','Disable safety equipment','Stop and seek appropriate guidance'],correctIndex:3}
+  ]}
+];
+
 function Training({state,update,setModal,showToast}){
   const [tab,setTab]=useState('catalog');
   const [externalResults,setExternalResults]=useState([]);
@@ -879,6 +930,7 @@ function Training({state,update,setModal,showToast}){
     }catch(err){ showToast(err.message||'Could not create external training access.'); }
   }
   const isEmployee=state.currentRole==='employee';
+  const canManageTraining=state.currentRole==='owner'||state.currentRole==='admin';
   const myId=state.viewingEmployeeId||state.employees[0]?.id;
   // force trainings to exist — if corrupted localStorage, seed robust 6
   if(!state.trainings || state.trainings.length===0){
@@ -903,10 +955,10 @@ function Training({state,update,setModal,showToast}){
       <div style={{background:'var(--paper)',color:'#201526',borderRadius:8,padding:12}}><div style={{fontSize:10,opacity:0.55,textTransform:'uppercase'}}>Certificates</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{certCount}</div></div>
     </div>
     <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
-      {['catalog','enrollments','certificates',...(!isEmployee?['external']:[])].map(t=> <button key={t} onClick={()=>setTab(t)} style={{padding:'6px 12px',borderRadius:20,fontSize:12,border:'1px solid var(--line)',background:tab===t?'var(--paper)':'transparent',color:tab===t?'#201526':'var(--muted)',cursor:'pointer',textTransform:'capitalize'}}>{t}</button>)}
+      {['catalog','library','enrollments','certificates',...(canManageTraining?['external']:[])].map(t=> <button key={t} onClick={()=>setTab(t)} style={{padding:'6px 12px',borderRadius:20,fontSize:12,border:'1px solid var(--line)',background:tab===t?'var(--paper)':'transparent',color:tab===t?'#201526':'var(--muted)',cursor:'pointer',textTransform:'capitalize'}}>{t}</button>)}
     </div>
 
-    {tab==='external' && !isEmployee && <div className="card" style={{gap:10}}>
+    {tab==='external' && canManageTraining && <div className="card" style={{gap:10}}>
       <div style={{fontWeight:700,fontSize:15}}>External trainee results</div>
       <div style={{fontSize:12,color:'var(--muted)'}}>Results are limited to access codes created by your company. External trainees do not receive employee account access.</div>
       {externalLoading && <p style={{fontSize:12}}>Loading results…</p>}
@@ -916,6 +968,26 @@ function Training({state,update,setModal,showToast}){
         <thead><tr>{['Trainee','Email','Course','Score','Result','Attempt','Submitted'].map(h=><th key={h} style={{textAlign:'left',padding:'8px 6px',borderBottom:'1px solid var(--line)'}}>{h}</th>)}</tr></thead>
         <tbody>{externalResults.map(row=><tr key={row.id}><td style={{padding:'8px 6px',borderBottom:'1px solid var(--line)'}}>{row.traineeName}</td><td style={{padding:'8px 6px',borderBottom:'1px solid var(--line)'}}>{row.email}</td><td style={{padding:'8px 6px',borderBottom:'1px solid var(--line)'}}>{row.courseTitle}</td><td style={{padding:'8px 6px',borderBottom:'1px solid var(--line)'}}>{row.percent}% ({row.score}/{row.total})</td><td style={{padding:'8px 6px',borderBottom:'1px solid var(--line)',color:row.passed?'#28765e':'#B23A2E'}}>{row.passed?'Passed':'Not passed'}</td><td style={{padding:'8px 6px',borderBottom:'1px solid var(--line)'}}>{row.attempt}</td><td style={{padding:'8px 6px',borderBottom:'1px solid var(--line)'}}>{new Date(row.submittedAt).toLocaleString()}</td></tr>)}</tbody>
       </table></div>}
+    </div>}
+    {tab==='library' && <div style={{display:'grid',gap:12}}>
+      <div className="card" style={{gap:6}}>
+        <div style={{fontWeight:700,fontSize:15}}>Reusable course library</div>
+        <div style={{fontSize:12,color:'var(--muted)',lineHeight:1.5}}>Choose a starter course and add a copy to your company catalogue. Each company keeps its own course record; employee progress and results are never shared across companies. Check the content against your local laws and company policies before assigning it.</div>
+      </div>
+      {libraryTemplates.map(template=>{
+        const alreadyAdded=state.trainings.some(course=>course.libraryKey===template.key);
+        return <div key={template.key} className="card" style={{gap:10}}>
+          <div style={{display:'flex',justifyContent:'space-between',gap:10,alignItems:'flex-start',flexWrap:'wrap'}}>
+            <div style={{flex:1,minWidth:200}}><div style={{fontSize:10,background:'var(--bg-2)',border:'1px solid var(--line)',display:'inline-block',padding:'3px 7px',borderRadius:20,marginBottom:7}}>{template.category} · Starter course</div><div style={{fontWeight:700,fontSize:15}}>{template.title}</div><div style={{fontSize:12,color:'var(--muted)',lineHeight:1.5,marginTop:5}}>{template.description}</div></div>
+            <div style={{fontSize:11,color:'var(--muted)'}}>{template.duration} · {template.questions.length} exam questions</div>
+          </div>
+          <details><summary style={{cursor:'pointer',fontSize:12,fontWeight:600}}>Preview study material and exam topics</summary><div style={{whiteSpace:'pre-wrap',fontSize:12,lineHeight:1.6,marginTop:8}}>{template.materials}</div><ul style={{fontSize:12,lineHeight:1.6}}>{template.questions.map((q,i)=><li key={i}>{q.text}</li>)}</ul></details>
+          {canManageTraining && <button className="btn btn-primary" disabled={alreadyAdded} onClick={()=>{
+            const course={...template,id:'course-'+Math.random().toString(36).slice(2,10),createdAt:new Date().toISOString().slice(0,10),required:false,libraryKey:template.key,questions:template.questions.map(q=>({...q,id:'question-'+Math.random().toString(36).slice(2,9)})),modules:[{id:'module-'+Math.random().toString(36).slice(2,8),title:'Study material',type:'doc',content:template.materials,duration:'30m'},{id:'quiz-'+Math.random().toString(36).slice(2,8),title:'Final assessment',type:'quiz',content:template.questions.length+' questions · '+template.passPercent+'% pass mark',duration:'20m'}]};
+            update(state=>{state.trainings.push(course);});showToast('Starter course added to your company catalogue');
+          }}>{alreadyAdded?'Already added':'Add to my courses'}</button>}
+        </div>;
+      })}
     </div>}
     {tab==='catalog' && <div className="grid">
       {state.trainings.map(tr=>{
@@ -928,7 +1000,7 @@ function Training({state,update,setModal,showToast}){
           <div style={{fontSize:11,opacity:0.65}}>{tr.modules.length} modules: {tr.modules.map(m=>m.title).join(' · ')}</div>
           <div style={{display:'flex',gap:6,marginTop:4,flexWrap:'wrap'}}>
             <button onClick={()=>setModal({type:'courseView', data:tr.id})} style={{background:'#fff',border:'1px solid #ddd',borderRadius:5,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>View & Take Test{hasQuiz?' 📝':''}</button>
-            {!isEmployee && <button onClick={()=>createExternalAccess(tr)} style={{background:'#286c62',color:'#fff',border:'none',borderRadius:5,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>Share external access</button>}
+            {canManageTraining && <button onClick={()=>createExternalAccess(tr)} style={{background:'#286c62',color:'#fff',border:'none',borderRadius:5,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>Share external access</button>}
             {isEmployee ? (
               myEnroll? <span style={{fontSize:11,background:myEnroll.progress===100?'#4C8577':'#E2735B',color:'#fff',padding:'6px 10px',borderRadius:5}}>{myEnroll.progress===100?'Completed ✓':`${myEnroll.progress}% — Enrolled`}</span>
               : <button onClick={()=>{ update(s=>{ s.enrollments.push({id:uid(), employeeId:myId, trainingId:tr.id, progress:0, completedModules:[], enrolledAt:new Date().toISOString().slice(0,10), completedAt:null, score:null, certificateId:null}); }); showToast('Enrolled — open View & Take Test to start'); }} style={{background:'var(--teal)',color:'#fff',border:'none',borderRadius:5,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>Enroll me</button>
