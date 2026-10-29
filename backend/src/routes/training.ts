@@ -1,9 +1,73 @@
 import { Router } from "express";
+import { randomBytes } from "crypto";
 import { z } from "zod";
 import { db } from "../lib/db.js";
 import { requireAuth, requireAdmin, AuthedRequest } from "../middleware/requireAuth.js";
 
 export const trainingRouter = Router();
+
+export const publicTrainingRouter = Router();
+
+function cleanAccessCode(value: unknown) {
+  return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 24);
+}
+
+publicTrainingRouter.post("/course", async (req, res) => {
+  const code = cleanAccessCode(req.body?.code);
+  if (!code) return res.status(400).json({ error: "Enter a training access code." });
+  try {
+    const access = ((await db.table("trainingAccessCodes")) as any[]).find((item) => item.code === code && !item.revokedAt);
+    if (!access) return res.status(404).json({ error: "This access code is invalid or has been disabled." });
+    const record = await db.findForCompany("companyState", access.companyId, access.companyId);
+    const state = record?.state as Record<string, any> | undefined;
+    const course = Array.isArray(state?.trainings) ? state!.trainings.find((item: any) => item.id === access.trainingId) : null;
+    if (!course) return res.status(404).json({ error: "This course is no longer available." });
+    const questions = Array.isArray(course.questions) ? course.questions : [];
+    return res.json({ course: { id: course.id, title: course.title, description: course.description || "", materials: course.materials || course.modules?.map((m: any) => m.content || "").filter(Boolean).join("\n\n") || "", passPercent: Number.isInteger(course.passPercent) ? course.passPercent : 70, questions: questions.map((q: any, index: number) => ({ id: q.id || String(index), text: q.text, options: q.options })) } });
+  } catch (error) {
+    console.error("Public training course lookup failed:", error);
+    return res.status(500).json({ error: "Could not load this course. Please try again." });
+  }
+});
+
+publicTrainingRouter.post("/submit", async (req, res) => {
+  const parsed = z.object({
+    code: z.string().min(1).max(24),
+    name: z.string().trim().min(1).max(120),
+    email: z.string().trim().email().max(254),
+    answers: z.record(z.number().int().min(0).max(3)),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Enter your name, a valid email, and answers to the exam." });
+  const code = cleanAccessCode(parsed.data.code);
+  try {
+    const access = ((await db.table("trainingAccessCodes")) as any[]).find((item) => item.code === code && !item.revokedAt);
+    if (!access) return res.status(404).json({ error: "This access code is invalid or has been disabled." });
+    const record = await db.findForCompany("companyState", access.companyId, access.companyId);
+    const state = record?.state as Record<string, any> | undefined;
+    const course = Array.isArray(state?.trainings) ? state!.trainings.find((item: any) => item.id === access.trainingId) : null;
+    const questions = Array.isArray(course?.questions) ? course.questions : [];
+    if (!course || !questions.length) return res.status(404).json({ error: "This course has no exam available yet." });
+    const answers = parsed.data.answers;
+    const allowedKeys = new Set(questions.map((q: any, index: number) => q.id || String(index)));
+    if (Object.keys(answers).some((key) => !allowedKeys.has(key))) return res.status(400).json({ error: "Your answers do not match this exam." });
+    for (let i = 0; i < questions.length; i++) if (answers[questions[i].id || String(i)] === undefined) return res.status(400).json({ error: "Please answer every question." });
+    const previous = ((await db.table("externalTrainingSubmissions", access.companyId)) as any[]).filter((item) => item.accessCodeId === access.id && item.email === parsed.data.email.trim().toLowerCase());
+    if (Number.isInteger(access.seatLimit) && access.seatLimit > 0) {
+      const distinctEmails = new Set(((await db.table("externalTrainingSubmissions", access.companyId)) as any[]).filter((item) => item.accessCodeId === access.id).map((item) => item.email));
+      if (!distinctEmails.has(parsed.data.email.trim().toLowerCase()) && distinctEmails.size >= access.seatLimit) return res.status(403).json({ error: "This course has reached its trainee limit. Contact the training administrator." });
+    }
+    const correctCount = questions.reduce((sum: number, q: any, index: number) => sum + (answers[q.id || String(index)] === q.correctIndex ? 1 : 0), 0);
+    const percent = Math.round((correctCount / questions.length) * 100);
+    const passed = percent >= (Number.isInteger(course.passPercent) ? course.passPercent : 70);
+    const submission = { id: "submission-" + randomBytes(12).toString("hex"), companyId: access.companyId, accessCodeId: access.id, trainingId: course.id, traineeName: parsed.data.name.trim(), email: parsed.data.email.trim().toLowerCase(), attempt: previous.length + 1, score: correctCount, total: questions.length, percent, passed, submittedAt: new Date().toISOString() };
+    await db.insert("externalTrainingSubmissions", submission);
+    return res.json({ result: { courseTitle: course.title, traineeName: submission.traineeName, score: correctCount, total: questions.length, percent, passed, passPercent: Number.isInteger(course.passPercent) ? course.passPercent : 70, attempt: submission.attempt } });
+  } catch (error) {
+    console.error("Public training exam submission failed:", error);
+    return res.status(500).json({ error: "Could not submit your exam. Please try again." });
+  }
+});
+
 trainingRouter.use(requireAuth);
 
 const GENERATED_COURSE_PROMPT = `You are an expert corporate instructional designer. Return only valid JSON with this shape:
@@ -67,6 +131,37 @@ trainingRouter.post("/generate", requireAdmin, async (req: AuthedRequest, res) =
     console.error("Training generation request failed:", error);
     return res.status(502).json({ error: "Could not reach the AI service. Please try again later." });
   }
+});
+
+
+trainingRouter.post("/access", requireAdmin, async (req: AuthedRequest, res) => {
+  const parsed = z.object({ trainingId: z.string().min(1).max(200), seatLimit: z.number().int().min(1).max(100000).nullable().optional() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Select a course and optionally set a valid trainee seat limit." });
+  try {
+    const record = await db.findForCompany("companyState", req.auth!.companyId, req.auth!.companyId);
+    const state = record?.state as Record<string, any> | undefined;
+    const course = Array.isArray(state?.trainings) ? state!.trainings.find((item: any) => item.id === parsed.data.trainingId) : null;
+    if (!course) return res.status(404).json({ error: "Course not found in your company." });
+    const existing = ((await db.table("trainingAccessCodes", req.auth!.companyId)) as any[]).find((item) => item.trainingId === course.id && !item.revokedAt);
+    if (existing) return res.json({ access: existing, url: `${process.env.APP_URL || process.env.FRONTEND_URL || ""}/training-access?code=${existing.code}` });
+    const code = randomBytes(6).toString("hex").toUpperCase();
+    const access = { id: "access-" + randomBytes(10).toString("hex"), companyId: req.auth!.companyId, trainingId: course.id, code, seatLimit: parsed.data.seatLimit ?? null, createdAt: new Date().toISOString(), revokedAt: null };
+    await db.insert("trainingAccessCodes", access);
+    return res.status(201).json({ access, url: `${process.env.APP_URL || process.env.FRONTEND_URL || ""}/training-access?code=${code}` });
+  } catch (error) {
+    console.error("Creating external training access failed:", error);
+    return res.status(500).json({ error: "Could not create a training access code." });
+  }
+});
+
+trainingRouter.get("/external-results", requireAdmin, async (req: AuthedRequest, res) => {
+  const rows = (await db.table("externalTrainingSubmissions", req.auth!.companyId)) as any[];
+  const access = (await db.table("trainingAccessCodes", req.auth!.companyId)) as any[];
+  const stateRecord = await db.findForCompany("companyState", req.auth!.companyId, req.auth!.companyId);
+  const trainings = Array.isArray(stateRecord?.state?.trainings) ? stateRecord.state.trainings : [];
+  const titles = new Map(trainings.map((item: any) => [item.id, item.title]));
+  const accessIds = new Set(access.map((item) => item.id));
+  return res.json({ results: rows.filter((item) => accessIds.has(item.accessCodeId)).map((item) => ({ ...item, courseTitle: titles.get(item.trainingId) || "Archived course" })).sort((a, b) => String(b.submittedAt).localeCompare(String(a.submittedAt))) });
 });
 
 trainingRouter.post("/submit", async (req: AuthedRequest, res) => {
