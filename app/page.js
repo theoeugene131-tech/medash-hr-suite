@@ -1438,9 +1438,11 @@ function MyProfile({state}){
 function CourseView({tr, state, update, showToast, close}){
   const [answers,setAnswers]=useState({});
   const [showResult,setShowResult]=useState(null);
-  if(!tr) return <div style={{padding:20,color:'#8C3B28'}}>Course not found — please click Reset demo or hard refresh (Ctrl+Shift+R).</div>;
+  const [activeModuleId,setActiveModuleId]=useState(null);
+  if(!tr) return <div style={{padding:20,color:'#8C3B28'}}>Course not found — please return to the catalogue and open it again.</div>;
   const isEmployee=state.currentRole==='employee';
   const myId=state.viewingEmployeeId||state.employees[0]?.id;
+  const modules=Array.isArray(tr.modules)?tr.modules:[];
   const quizQuestions=Array.isArray(tr.questions)&&tr.questions.length
     ? tr.questions.map((q,i)=>({q:q.text,a:q.options,correct:q.correctIndex,id:q.id||String(i)}))
     : [
@@ -1449,6 +1451,23 @@ function CourseView({tr, state, update, showToast, close}){
       {q:'Who should report an incident?', a:['Only manager','Everyone','No one'], correct:1, id:'2'},
     ];
   const passPercent=Number.isInteger(tr.passPercent)?tr.passPercent:70;
+  const enrollment=state.enrollments.find(e=>e.employeeId===myId && e.trainingId===tr.id);
+  const completedModules=enrollment?.completedModules||[];
+  const activeModule=modules.find(m=>m.id===activeModuleId)||null;
+  const lessons=modules.filter(m=>m.type!=='quiz');
+  function markLessonComplete(module){
+    update(s=>{
+      let record=s.enrollments.find(e=>e.employeeId===myId && e.trainingId===tr.id);
+      if(!record){
+        record={id:uid(),employeeId:myId,trainingId:tr.id,progress:0,completedModules:[],enrolledAt:new Date().toISOString().slice(0,10),completedAt:null,score:null,certificateId:null};
+        s.enrollments.push(record);
+      }
+      if(!record.completedModules.includes(module.id)) record.completedModules.push(module.id);
+      const total=modules.length||1;
+      record.progress=Math.round(100*record.completedModules.length/total);
+    });
+    showToast('Lesson marked as completed');
+  }
   async function submitQuiz(){
     if(quizQuestions.some((qq)=>answers[qq.id]===undefined)){ showToast('Please answer every question first'); return; }
     let pct=0, pass=false;
@@ -1465,36 +1484,59 @@ function CourseView({tr, state, update, showToast, close}){
     if(pass){
       update(s=>{
         let my=s.enrollments.find(e=>e.employeeId===myId && e.trainingId===tr.id);
-        if(!my){ my={id:uid(), employeeId:myId, trainingId:tr.id, progress:0, completedModules:[], enrolledAt:new Date().toISOString().slice(0,10), completedAt:null, score:null, certificateId:null}; s.enrollments.push(my); }
-        const quizMod=tr.modules.find(m=>m.type==='quiz');
-        if(quizMod && !my.completedModules.includes(quizMod.id)) my.completedModules.push(quizMod.id);
-        tr.modules.filter(m=>m.type!=='quiz').forEach(m=>{ if(!my.completedModules.includes(m.id)) my.completedModules.push(m.id); });
-        my.progress=Math.round(100*my.completedModules.length/tr.modules.length);
+        if(!my){ my={id:uid(),employeeId:myId,trainingId:tr.id,progress:0,completedModules:[],enrolledAt:new Date().toISOString().slice(0,10),completedAt:null,score:null,certificateId:null}; s.enrollments.push(my); }
+        modules.forEach(m=>{if(!my.completedModules.includes(m.id)) my.completedModules.push(m.id);});
+        my.progress=100;
         my.score=pct;
-        if(my.progress===100 && !my.certificateId){ const cid=uid(); my.certificateId=cid; my.completedAt=new Date().toISOString().slice(0,10); s.certificates.push({id:cid, employeeId:myId, trainingId:tr.id, issuedAt:my.completedAt, score:pct}); }
+        if(!my.certificateId){ const cid=uid(); my.certificateId=cid; my.completedAt=new Date().toISOString().slice(0,10); s.certificates.push({id:cid,employeeId:myId,trainingId:tr.id,issuedAt:my.completedAt,score:pct}); }
       });
     }
   }
   return <>
-    <div style={{background:'rgba(32,21,38,0.05)',borderRadius:8,padding:12,marginBottom:12}}><div style={{fontSize:11,opacity:0.6}}>{tr.category} · {tr.duration} · {tr.required?'Required':''}</div><div style={{fontWeight:700,marginTop:4}}>{tr.title}</div><div style={{fontSize:12,opacity:0.7,marginTop:4}}>{tr.description}</div></div>
-    <div style={{fontSize:11,fontWeight:600,letterSpacing:0.05+'em',textTransform:'uppercase',opacity:0.6,marginBottom:6}}>Modules — Staff & HR can view & take tests</div>
-    {tr.modules.map((m,i)=> <div key={m.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:'#fff',border:'1px solid rgba(32,21,38,0.08)',borderRadius:6,marginBottom:6}}>
-      <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{i+1}. {m.title} <span style={{fontSize:10,background:m.type==='quiz'?'#E2735B':'#E0E2E8',color:m.type==='quiz'?'#fff':'#201526',padding:'2px 6px',borderRadius:10}}>{m.type}</span></div><div style={{fontSize:11,opacity:0.6}}>{m.duration} · {m.content}</div></div>
-      {m.type==='quiz' ? <button onClick={()=>{ setShowResult(null); setAnswers({}); document.getElementById('quiz-area')?.scrollIntoView({behavior:'smooth'}); }} style={{background:'#4C8577',color:'#fff',border:'none',padding:'6px 10px',borderRadius:5,fontSize:11,cursor:'pointer'}}>Take Test</button> : <span style={{fontSize:11,background:'#EDEEF2',padding:'4px 8px',borderRadius:5}}>View</span>}
-    </div>)}
-    <div id="quiz-area" style={{marginTop:14,background:'#fff',border:'1px solid #ddd',borderRadius:8,padding:14}}>
-      <div style={{fontWeight:700,fontSize:13}}>Test — {tr.title} ({passPercent}% to pass)</div>
-      {showResult ? <div style={{textAlign:'center',padding:16}}><div style={{fontSize:22,fontWeight:700,color: showResult.pass?'#4C8577':'#E2735B'}}>{showResult.pass?'Passed ✓':'Failed'}</div><div style={{fontFamily:'monospace',fontSize:18,marginTop:6}}>{showResult.score}%</div><div style={{fontSize:11,opacity:0.6,marginTop:4}}>{showResult.pass?'Certificate generated in Training → Certificates':'Try again — review modules'}</div><button onClick={()=>setShowResult(null)} style={{marginTop:10,background:'#201526',color:'#fff',border:'none',padding:'7px 12px',borderRadius:6,fontSize:12,cursor:'pointer'}}>Retake</button></div> :
-      <div>
-        {quizQuestions.map((qq,i)=> <div key={qq.id||i} style={{marginTop:10,padding:10,background:'rgba(32,21,38,0.04)',borderRadius:6}}>
-          <div style={{fontSize:12,fontWeight:600}}>{i+1}. {qq.q}</div>
-          <div style={{display:'flex',gap:8,marginTop:6,flexWrap:'wrap'}}>{qq.a.map((opt,oi)=> <label key={oi} style={{fontSize:11,background: answers[qq.id]===oi?'#201526':'#fff',color:answers[qq.id]===oi?'#fff':'#201526',border:'1px solid #ddd',padding:'5px 10px',borderRadius:20,cursor:'pointer'}}><input type="radio" name={`q${qq.id}`} checked={answers[qq.id]===oi} onChange={()=>setAnswers({...answers,[qq.id]:oi})} style={{display:'none'}}/>{opt}</label>)}</div>
-        </div>)}
-        <button onClick={submitQuiz} style={{marginTop:12,background:'#E2735B',color:'#fff',border:'none',padding:'8px 14px',borderRadius:6,fontSize:12,cursor:'pointer',width:'100%'}}>Submit Test</button>
-        <div style={{fontSize:10,opacity:0.55,marginTop:6}}>Employee exams are scored by the backend when cloud mode is active; offline demo exams are scored locally. Progress is saved with company training records.</div>
-      </div>}
+    <div style={{background:'rgba(32,21,38,0.05)',borderRadius:8,padding:12,marginBottom:14}}>
+      <div style={{fontSize:11,opacity:0.6}}>{tr.category} · {tr.duration} · {tr.required?'Required':''}</div>
+      <div style={{fontWeight:700,marginTop:4,fontSize:18}}>{tr.title}</div>
+      <div style={{fontSize:12,opacity:0.7,marginTop:4}}>{tr.description}</div>
+      {tr.objectives&&<div style={{fontSize:12,marginTop:8,lineHeight:1.6}}><strong>Learning objectives:</strong> {tr.objectives}</div>}
+      <div style={{fontSize:11,marginTop:9,color:'var(--muted)'}}>Your learning progress: {enrollment?.progress||0}% · {completedModules.length}/{modules.length} course sections completed</div>
     </div>
-    <div style={{marginTop:12,textAlign:'right'}}><button onClick={close} style={{background:'#201526',color:'#fff',border:'none',padding:'7px 12px',borderRadius:6,fontSize:12,cursor:'pointer'}}>Close</button></div>
+    <div style={{fontSize:12,fontWeight:700,marginBottom:8}}>Course lessons</div>
+    {modules.map((m,i)=>{
+      const isQuiz=m.type==='quiz';
+      const isDone=completedModules.includes(m.id);
+      const selected=activeModuleId===m.id;
+      return <div key={m.id} style={{display:'flex',alignItems:'center',gap:10,padding:'11px 12px',background:selected?'#F0F5F3':'#fff',border:'1px solid '+(selected?'#4C8577':'rgba(32,21,38,0.12)'),borderRadius:7,marginBottom:7}}>
+        <div style={{width:26,height:26,borderRadius:20,display:'grid',placeItems:'center',background:isDone?'#4C8577':'#EDEEF2',color:isDone?'#fff':'#201526',fontSize:11,fontWeight:700}}>{isDone?'✓':i+1}</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:13,fontWeight:600}}>{m.title}</div>
+          <div style={{fontSize:11,opacity:0.65,marginTop:3}}>{m.duration||'Lesson'} · {isQuiz?'Assessment':(m.type||'Lesson')}</div>
+        </div>
+        <button onClick={()=>{setActiveModuleId(m.id);setShowResult(null);}} style={{background:isQuiz?'#E2735B':'#286c62',color:'#fff',border:0,padding:'7px 10px',borderRadius:5,fontSize:11,cursor:'pointer'}}>{isQuiz?'Open test':'Study lesson'}</button>
+      </div>;
+    })}
+    {activeModule && activeModule.type!=='quiz' && <section style={{marginTop:14,background:'#fff',border:'1px solid #D9E1DE',borderRadius:9,padding:16}}>
+      <div style={{fontSize:10,textTransform:'uppercase',letterSpacing:'0.08em',color:'#286c62',fontWeight:700}}>Learning material · {activeModule.duration||'Self-paced'}</div>
+      <h3 style={{fontSize:17,margin:'7px 0 12px',color:'#201526'}}>{activeModule.title}</h3>
+      <div style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',fontSize:13,lineHeight:1.8,color:'#28333B'}}>{activeModule.content||'No written lesson content has been added to this section yet. Please contact your HR administrator for the learning material.'}</div>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:16}}>
+        {!completedModules.includes(activeModule.id)?<button onClick={()=>markLessonComplete(activeModule)} style={{background:'#286c62',color:'#fff',border:0,borderRadius:6,padding:'9px 13px',fontSize:12,cursor:'pointer'}}>Mark lesson complete</button>:<span style={{fontSize:12,color:'#286c62',fontWeight:700,padding:'9px 0'}}>Lesson completed ✓</span>}
+        {lessons.findIndex(m=>m.id===activeModule.id)<lessons.length-1&&<button onClick={()=>{const index=lessons.findIndex(m=>m.id===activeModule.id);setActiveModuleId(lessons[index+1].id);}} style={{background:'#F0F2F4',color:'#201526',border:0,borderRadius:6,padding:'9px 13px',fontSize:12,cursor:'pointer'}}>Next lesson →</button>}
+      </div>
+    </section>}
+    {activeModule?.type==='quiz' && <div id="quiz-area" style={{marginTop:14,background:'#fff',border:'1px solid #ddd',borderRadius:8,padding:14}}>
+      <div style={{fontWeight:700,fontSize:14}}>Final assessment — {tr.title}</div>
+      <div style={{fontSize:11,color:'var(--muted)',marginTop:4,marginBottom:8}}>Pass mark: {passPercent}%. You can review the lessons above before submitting.</div>
+      {showResult ? <div style={{textAlign:'center',padding:16}}><div style={{fontSize:22,fontWeight:700,color:showResult.pass?'#4C8577':'#E2735B'}}>{showResult.pass?'Passed ✓':'Not passed yet'}</div><div style={{fontFamily:'monospace',fontSize:22,marginTop:6}}>{showResult.score}%</div><div style={{fontSize:11,opacity:0.7,marginTop:4}}>{showResult.pass?'Course completed. Your certificate is available in Training → Certificates.':'Review the lessons and try again.'}</div><button onClick={()=>{setShowResult(null);setAnswers({});}} style={{marginTop:10,background:'#201526',color:'#fff',border:0,padding:'8px 12px',borderRadius:6,fontSize:12,cursor:'pointer'}}>Retake test</button></div>:
+      <div>
+        {quizQuestions.map((qq,i)=><div key={qq.id||i} style={{marginTop:10,padding:10,background:'rgba(32,21,38,0.04)',borderRadius:6}}>
+          <div style={{fontSize:12,fontWeight:600}}>{i+1}. {qq.q}</div>
+          <div style={{display:'flex',gap:8,marginTop:7,flexWrap:'wrap'}}>{qq.a.map((opt,oi)=><label key={oi} style={{fontSize:11,background:answers[qq.id]===oi?'#201526':'#fff',color:answers[qq.id]===oi?'#fff':'#201526',border:'1px solid #ddd',padding:'6px 10px',borderRadius:20,cursor:'pointer'}}><input type="radio" name={'q'+qq.id} checked={answers[qq.id]===oi} onChange={()=>setAnswers(old=>({...old,[qq.id]:oi}))} style={{display:'none'}}/>{opt}</label>)}</div>
+        </div>)}
+        <button onClick={submitQuiz} style={{marginTop:14,background:'#E2735B',color:'#fff',border:0,padding:'9px 14px',borderRadius:6,fontSize:12,cursor:'pointer',width:'100%'}}>Submit test</button>
+      </div>}
+    </div>}
+    {!activeModule&&<div style={{marginTop:14,background:'#F6F7F8',borderRadius:8,padding:14,fontSize:12,color:'#586574'}}>Select a lesson above to open its learning material. Study the lessons at your own pace, then select the final assessment when you are ready.</div>}
+    <div style={{marginTop:14,textAlign:'right'}}><button onClick={close} style={{background:'#201526',color:'#fff',border:0,padding:'8px 13px',borderRadius:6,fontSize:12,cursor:'pointer'}}>Close course</button></div>
   </>;
 }
 function AuthScreen({authForm,setAuthForm,onAuth,showToast}){
