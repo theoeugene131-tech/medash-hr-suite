@@ -60,7 +60,7 @@ export default function TrainingAccessPage() {
           {(() => {
             const lessons = Array.isArray(course.modules) && course.modules.length
               ? course.modules.filter((module) => module.type !== "quiz")
-              : (course.materials ? course.materials.split(/(?=MODULE\\s+\\d+\\s*[—-])/i).filter((part) => part.trim()).map((content, index) => ({ id: "lesson-" + index, title: (content.trim().split("\\n")[0] || "Lesson " + (index + 1)).replace(/^MODULE\\s+\\d+\\s*[—-]?\\s*/i, ""), content })) : []);
+              : (course.materials ? course.materials.split(/(?=MODULE\s+\\d+\s*[—-])/i).filter((part) => part.trim()).map((content, index) => ({ id: "lesson-" + index, title: (content.trim().split("\n")[0] || "Lesson " + (index + 1)).replace(/^MODULE\s+\\d+\s*[—-]?\s*/i, ""), content })) : []);
             return <section style={{ display: "grid", gap: 12, border: "1px solid #cbd8d4", borderRadius: 10, padding: 14, background: "#f8fbfa" }}>
               <div><h3 style={{ margin: 0, fontSize: 18 }}>Study your lectures before the assessment</h3><p style={{ margin: "5px 0 0", color: "#586574", fontSize: 13 }}>Open each lesson below. Read the full material, then continue to the next lesson.</p></div>
               {lessons.length > 0 ? <>
