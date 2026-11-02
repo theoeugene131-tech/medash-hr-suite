@@ -23,7 +23,8 @@ publicTrainingRouter.post("/course", async (req, res) => {
     const course = Array.isArray(state?.trainings) ? state!.trainings.find((item: any) => item.id === access.trainingId) : null;
     if (!course) return res.status(404).json({ error: "This course is no longer available." });
     const questions = Array.isArray(course.questions) ? course.questions : [];
-    return res.json({ course: { id: course.id, title: course.title, description: course.description || "", materials: course.materials || course.modules?.map((m: any) => m.content || "").filter(Boolean).join("\n\n") || "", passPercent: Number.isInteger(course.passPercent) ? course.passPercent : 70, questions: questions.map((q: any, index: number) => ({ id: q.id || String(index), text: q.text, options: q.options })) } });
+    const modules = Array.isArray(course.modules) ? course.modules.filter((module: any) => module.type !== "quiz").map((module: any, index: number) => ({ id: module.id || String(index), title: module.title || `Lesson ${index + 1}`, type: module.type || "doc", content: module.content || "", duration: module.duration || "Self-paced" })) : [];
+    return res.json({ course: { id: course.id, title: course.title, description: course.description || "", materials: course.materials || modules.map((module: any) => module.content).filter(Boolean).join("\n\n") || "", modules, passPercent: Number.isInteger(course.passPercent) ? course.passPercent : 70, questions: questions.map((q: any, index: number) => ({ id: q.id || String(index), text: q.text, options: q.options })) } });
   } catch (error) {
     console.error("Public training course lookup failed:", error);
     return res.status(500).json({ error: "Could not load this course. Please try again." });
