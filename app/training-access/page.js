@@ -12,6 +12,7 @@ export default function TrainingAccessPage() {
   const [email, setEmail] = useState("");
   const [course, setCourse] = useState(null);
   const [answers, setAnswers] = useState({});
+  const [activeLesson, setActiveLesson] = useState(0);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -28,7 +29,7 @@ export default function TrainingAccessPage() {
     setBusy(true); setError(""); setResult(null); setCourse(null); setAnswers({});
     try {
       const response = await api("/api/training/public/course", { method: "POST", body: { code: code.trim() } });
-      setCourse(response.course);
+      setCourse(response.course); setActiveLesson(0);
     } catch (e) { setError(e.message || "Could not load this course."); }
     finally { setBusy(false); }
   }
@@ -56,8 +57,33 @@ export default function TrainingAccessPage() {
         </form>}
         {course && !result && <form onSubmit={submit} style={{ display: "grid", gap: 18 }}>
           <div><h2 style={{ margin: "0 0 6px", fontSize: 24 }}>{course.title}</h2><p style={{ margin: 0, color: "#586574" }}>{course.description}</p><p style={{ fontSize: 13, color: "#586574" }}>Pass mark: {course.passPercent}% · {course.questions.length} questions</p></div>
-          {course.materials && <details open style={{ border: "1px solid #e0e5e9", borderRadius: 9, padding: 12 }}><summary style={{ cursor: "pointer", fontWeight: 700 }}>Study material</summary><div style={{ whiteSpace: "pre-wrap", lineHeight: 1.65, marginTop: 12 }}>{course.materials}</div></details>}
+          {(() => {
+            const lessons = Array.isArray(course.modules) && course.modules.length
+              ? course.modules.filter((module) => module.type !== "quiz")
+              : (course.materials ? course.materials.split(/(?=MODULE\s+\\d+\s*[—-])/i).filter((part) => part.trim()).map((content, index) => ({ id: "lesson-" + index, title: (content.trim().split("\n")[0] || "Lesson " + (index + 1)).replace(/^MODULE\s+\\d+\s*[—-]?\s*/i, ""), content })) : []);
+            return <section style={{ display: "grid", gap: 12, border: "1px solid #cbd8d4", borderRadius: 10, padding: 14, background: "#f8fbfa" }}>
+              <div><h3 style={{ margin: 0, fontSize: 18 }}>Study your lectures before the assessment</h3><p style={{ margin: "5px 0 0", color: "#586574", fontSize: 13 }}>Open each lesson below. Read the full material, then continue to the next lesson.</p></div>
+              {lessons.length > 0 ? <>
+                <div style={{ display: "grid", gap: 7 }}>
+                  {lessons.map((lesson, index) => <button type="button" key={lesson.id || index} onClick={() => setActiveLesson(index)} style={{ textAlign: "left", border: activeLesson === index ? "2px solid #286c62" : "1px solid #d7dce2", borderRadius: 8, padding: 11, background: activeLesson === index ? "#eaf3f0" : "#fff", color: "#17212b", cursor: "pointer" }}>
+                    <span style={{ fontWeight: 700 }}>Lesson {index + 1}: {lesson.title || "Study lesson"}</span>
+                    <span style={{ display: "block", fontSize: 12, color: "#586574", marginTop: 3 }}>{lesson.duration || "Self-paced"} · Select to study</span>
+                  </button>)}
+                </div>
+                <article style={{ background: "#fff", border: "1px solid #e0e5e9", borderRadius: 9, padding: 16 }}>
+                  <div style={{ fontSize: 11, color: "#286c62", fontWeight: 700, textTransform: "uppercase" }}>Lecture {activeLesson + 1} of {lessons.length}</div>
+                  <h4 style={{ fontSize: 19, margin: "6px 0 12px" }}>{lessons[activeLesson]?.title || "Study lesson"}</h4>
+                  <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", lineHeight: 1.75, fontSize: 14 }}>{lessons[activeLesson]?.content || "Your training administrator has not added written material to this lesson yet."}</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 16 }}>
+                    <button type="button" disabled={activeLesson === 0} onClick={() => setActiveLesson((value) => Math.max(0, value - 1))} style={{ border: "1px solid #d7dce2", borderRadius: 7, padding: "9px 13px", background: "#fff", cursor: activeLesson === 0 ? "not-allowed" : "pointer" }}>Previous lesson</button>
+                    <button type="button" disabled={activeLesson >= lessons.length - 1} onClick={() => setActiveLesson((value) => Math.min(lessons.length - 1, value + 1))} style={{ border: 0, borderRadius: 7, padding: "9px 13px", background: "#286c62", color: "#fff", cursor: activeLesson >= lessons.length - 1 ? "not-allowed" : "pointer" }}>Next lesson →</button>
+                  </div>
+                </article>
+              </> : <p style={{ margin: 0, color: "#a33" }}>No lecture material has been added to this course yet. Please contact your training administrator.</p>}
+            </section>;
+          })()}
           <div style={{ display: "grid", gap: 16 }}>
+            <h3 style={{ margin: 0, fontSize: 18 }}>Final assessment</h3>
             {course.questions.map((q, i) => <fieldset key={q.id} style={{ margin: 0, border: "1px solid #e0e5e9", borderRadius: 10, padding: 14 }}>
               <legend style={{ padding: "0 5px", fontWeight: 700 }}>{i + 1}. {q.text}</legend>
               <div style={{ display: "grid", gap: 9, marginTop: 8 }}>
