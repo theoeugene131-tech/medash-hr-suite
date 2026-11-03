@@ -1,0 +1,1820 @@
+"use client";
+import { useEffect, useState } from "react";
+import { loadState, saveState } from "@/lib/store";
+import { normalizeKey, isValidFormat, getStoredKey, saveLicense, clearLicense } from "@/lib/license";
+import { getApiBase, setApiBaseOverride, getToken, setSession, getSessionUser, clearSession, AuthAPI, EmployeesAPI, PayrollAPI, CompanyAPI, CompanyStateAPI, api } from "@/lib/api";
+import CountrySettings from "@/components/CountrySettings";
+import TrainingCourseBuilder from "@/components/TrainingCourseBuilder";
+import { formatMoney, formatDate, getCurrencySymbol, getCountryOptions } from "@/lib/region";
+
+const AVATAR_COLORS = ['#E2735B','#C9A227','#4C8577','#7D6BA6','#B3563F','#3E7C8A'];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DOC_TYPES = [
+  {key:'passport', label:'Passport Photo', category:'Onboarding', required:true},
+  {key:'cv', label:'CV / Resume', category:'Onboarding', required:true},
+  {key:'offer', label:'Offer Letter / Contract', category:'Onboarding', required:true},
+  {key:'acceptance', label:'Acceptance Letter', category:'Onboarding', required:true},
+  {key:'deployment', label:'Deployment to Unit', category:'Onboarding', required:true},
+  {key:'jd', label:'Job Description', category:'Onboarding', required:true},
+  {key:'medicals', label:'Medicals', category:'Onboarding', required:true},
+  {key:'nin', label:'Government ID / identity document', category:'IDs & Statutory', required:false},
+  {key:'paye_tin', label:'Tax / withholding reference', category:'IDs & Statutory', required:false},
+  {key:'nhf', label:'Local statutory scheme reference', category:'IDs & Statutory', required:false},
+  {key:'pension', label:'Pension / retirement scheme reference', category:'IDs & Statutory', required:false},
+  {key:'nsitf', label:'Employer insurance / statutory registration', category:'IDs & Statutory', required:false},
+  {key:'quarterly', label:'Quarterly Appraisal', category:'Appraisals', required:false},
+  {key:'annual', label:'Annual Appraisal', category:'Appraisals', required:false},
+];
+const TAB_LABELS = {
+  overview:'Home', team:'Team', docs:'Documents', regulatory:'Regulatory', training:'Training', leave:'Leave', attendance:'Attendance', org:'Org Chart', runpayroll:'Run payroll', history:'Payroll history',
+  compliance:'Compliance', reviews:'Performance reviews', hiring:'Hiring', reports:'Reports', myprofile:'My profile', settings:'Country & Region'
+};
+const COUNTRY_LABELS = { NG:'Nigeria', GB:'Europe/UK', UK:'Europe/UK', US:'United States' };
+const NAV_GROUPS = [
+  { key:'overview', label:'Home', description:'Your HR workspace at a glance: team activity, key people information and items that need attention.', tabs:['overview'] },
+  { key:'hr', label:'HR', description:'Manage people, employee records, onboarding documents, leave, attendance, performance, hiring and employee profiles.', tabs:['team','docs','leave','attendance','org','reviews','hiring','myprofile'] },
+  { key:'payroll', label:'Payroll', description:'Prepare and review payroll, maintain payroll history, reports and country-specific compliance settings.', tabs:['runpayroll','history','regulatory','compliance','reports','settings'] },
+  { key:'training', label:'Training', description:'Build, organise and deliver employee learning, course materials, assessments and external training.', tabs:['training'] }
+];
+function visibleTabs(role){
+  if(role==='employee') return ['myprofile','training','leave','attendance'];
+  if(role==='admin') return ['overview','team','docs','regulatory','training','leave','attendance','org','runpayroll','history','compliance','reviews','hiring','settings'];
+  return ['overview','team','docs','regulatory','training','leave','attendance','org','runpayroll','history','compliance','reviews','hiring','reports','settings'];
+}
+const LEAVE_TYPES = [
+  {key:'annual', label:'Annual Leave', days:21, color:'#4C8577'},
+  {key:'sick', label:'Sick Leave', days:10, color:'#E2735B'},
+  {key:'casual', label:'Casual Leave', days:7, color:'#C9A227'},
+  {key:'maternity', label:'Maternity/Paternity', days:84, color:'#7D6BA6'},
+];
+function initials(name){ return name.trim().split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase(); }
+function money(n){ return formatMoney(n); }
+function uid(){ return Math.random().toString(36).slice(2,9); }
+function companyStatePayload(s){ return { companyName:s.companyName, countryCode:s.countryCode, currency:s.currency, locale:s.locale, timezone:s.timezone, compliance:s.compliance||{}, reviews:s.reviews||[], candidates:s.candidates||[], trainings:s.trainings||[], enrollments:s.enrollments||[], certificates:s.certificates||[], leaves:s.leaves||[], attendance:s.attendance||[], orgUnits:s.orgUnits||[] }; }
+function addDays(date,n){ const d=new Date(date); d.setDate(d.getDate()+n); return d; }
+// ---- Cloud backend (opt-in) helpers ----
+// Map backend employee rows to the local state shape (frontend-only extras
+// like avatar color, department, documents stay local).
+const CLOUD_OFF_KEY='medash_cloud_off';
+function cloudEmployeeToLocal(e,i){
+  const docs={}; try{ DOC_TYPES.forEach(dt=> docs[dt.key]=null); }catch{}
+  return { id:e.id, name:e.name, role:e.role, gross:Number(e.gross)||0, bank:e.bank||'', account:e.account||'', startDate:e.startDate||'', dob:e.dob||'', active:e.active!==false, color:AVATAR_COLORS[(i||0)%AVATAR_COLORS.length], department:null, nin:e.nin||'', payeTin:e.payeTin||'', nhfNumber:e.nhfNumber||'', pensionPin:e.pensionPin||'', nsitfNumber:e.nsitfNumber||'', passportPhoto:null, documents:docs };
+}
+function cloudRunToLocal(r){
+  const lines=(r.lines||[]).map(l=>({ employeeId:l.employeeId, name:l.name, role:l.role, gross:Number(l.gross)||0, bank:l.bank||'', account:l.account||'', monthlyPAYE:l.monthlyPAYE, pensionEmployee:l.pensionEmployee, pensionEmployer:l.pensionEmployer, nhf:l.nhf, nsitf:l.nsitf??Math.round((l.gross||0)*0.01), otherDeductions:l.otherDeductions||0, notes:l.notes||'', net:l.net }));
+  return { id:r.id, period:r.period, createdAt:r.createdAt, lines, status:r.status||'prepared', method:r.method||'automatic-estimate', approvedAt:r.approvedAt||null };
+}
+function nextPeriod(runs){
+  const now=new Date();
+  if(!runs.length) return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const last=runs[runs.length-1].period; const [y,m]=last.split('-').map(Number);
+  const d=new Date(y,m-1+1,1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+function periodLabel(p){ const [y,m]=p.split('-').map(Number); return `${MONTHS[m-1]} ${y}`; }
+function periodEndDate(p){ const [y,m]=p.split('-').map(Number); return new Date(y,m,0); }
+function getDueDates(period){
+  const end=periodEndDate(period);
+  const add=(d,days)=>{ const nd=new Date(d); nd.setDate(nd.getDate()+days); return nd; };
+  return { paye:add(end,10), pension:add(end,7), nhf:add(end,30), nsitf:add(end,90) };
+}
+function daysUntil(date){ const ms=new Date(date).setHours(0,0,0,0)-new Date().setHours(0,0,0,0); return Math.round(ms/86400000); }
+function complianceStatus(state, period, item){
+  const rec=state.compliance[period]||{}; if(rec[item]) return 'filed';
+  const due=getDueDates(period)[item]; const d=daysUntil(new Date(due)); if(d<0) return 'overdue'; return 'pending';
+}
+function migrateState(s){
+  let changed=false;
+  if(!s.companyName){ s.companyName=''; changed=true; }
+  if(s.countryCode==='UK'){ s.countryCode='GB'; changed=true; }
+  if(!s.countryCode){ s.countryCode='NG'; changed=true; }
+  if(!s.currency){ s.currency=s.countryCode==='GB'?'GBP':s.countryCode==='US'?'USD':'NGN'; changed=true; }
+  if(!s.locale){ s.locale=s.countryCode==='GB'?'en-GB':s.countryCode==='US'?'en-US':'en-NG'; changed=true; }
+  if(!s.timezone){ s.timezone=s.countryCode==='GB'?'Europe/London':s.countryCode==='US'?'America/New_York':'Africa/Lagos'; changed=true; }
+  if(!s.trainings || s.trainings.length===0){ 
+    const fresh=seedDemo(); s.trainings=fresh.trainings; s.enrollments=fresh.enrollments; s.certificates=fresh.certificates; changed=true;
+  }
+  if(!s.enrollments){ s.enrollments=[]; changed=true; }
+  if(!s.certificates){ s.certificates=[]; changed=true; }
+  if(!s.leaves){ s.leaves=[]; changed=true; }
+  if(!s.attendance){ s.attendance=[]; changed=true; }
+  if(!s.orgUnits){ s.orgUnits=[
+    {id:'dept1', name:'Operations', head: s.employees[0]?.id||null, color:'#4C8577'},
+    {id:'dept2', name:'Sales & Support', head: s.employees[1]?.id||null, color:'#E2735B'},
+    {id:'dept3', name:'Finance', head: s.employees[2]?.id||null, color:'#C9A227'},
+  ]; changed=true; }
+  s.employees.forEach(em=>{
+    if(em.department===undefined){ em.department = s.orgUnits[Math.floor(Math.random()*s.orgUnits.length)]?.id || 'dept1'; changed=true; }
+  });
+  // front-load additional courses if missing (customer service already, add work-life balance, grit, etc.)
+  const mustHave=[
+    {title:'Customer Service Excellence', def:{category:'Skills', duration:'3h', description:'Handling complaints, empathy and service recovery for frontline teams.', modules:[{title:'Service Framework & Empathy',type:'doc',duration:'60m'},{title:'Role-play: Difficult Customer',type:'assignment',duration:'30m'},{title:'Quiz — Service',type:'quiz',duration:'15m'}]}},
+    {title:'Work-Life Balance', def:{category:'Wellness', duration:'1.5h', description:'Managing stress, boundaries, burnout prevention and productivity.', modules:[{title:'Understanding Burnout',type:'doc',duration:'20m'},{title:'Time & Energy Management',type:'video',duration:'30m'},{title:'Self-assessment — Balance',type:'assignment',duration:'20m'}]}},
+    {title:'Grit & Resilience', def:{category:'Mindset', duration:'2h', description:'Growth mindset, perseverance through obstacles, grit at work.', modules:[{title:'Grit Principles',type:'doc',duration:'30m'},{title:'Resilience Stories',type:'video',duration:'40m'},{title:'Quiz — Grit',type:'quiz',duration:'15m'}]}},
+    {title:'Effective Communication', def:{category:'Skills', duration:'1h', description:'Clear writing, active listening, feedback without friction.', modules:[{title:'Communication Essentials',type:'doc',duration:'30m'},{title:'Practice: Feedback Lab',type:'assignment',duration:'20m'}]}},
+  ];
+  // ensure all 6 preloaded courses exist (migrate old installs that had only 3)
+  const seedAllTitles=['Workplace Safety Essentials','HR Compliance & Ethics','Customer Service Excellence','Work-Life Balance','Grit & Resilience','Effective Communication'];
+  if(s.trainings.length < 6 || !seedAllTitles.every(t=> s.trainings.some(x=>x.title===t))){
+    // inject missing via full reseed but keep enrollments if possible — just add missing
+    mustHave.forEach(m=>{
+      if(!s.trainings.some(t=>t.title===m.title)){
+        s.trainings.push({id:uid(), title:m.title, category:m.def.category, duration:m.def.duration, description:m.def.description, required:false, createdAt:new Date().toISOString().slice(0,10), modules: m.def.modules.map(mm=>({id:uid(), title:mm.title, type:mm.type, content:mm.type==='quiz'?'Pass 70%':mm.title, duration:mm.duration}))});
+        changed=true;
+      }
+    });
+    const coreMissing=['Workplace Safety Essentials','HR Compliance & Ethics'].filter(t=> !s.trainings.some(x=>x.title===t));
+    coreMissing.forEach(title=>{
+      const isWorkplace=title==='Workplace Safety Essentials';
+      s.trainings.unshift({id:uid(), title, category:'Compliance', duration:isWorkplace?'2h':'1.5h', description:isWorkplace?'Mandatory safety, hygiene and emergency procedures for all staff.':'Code of conduct, data protection, anti-harassment.', required:true, createdAt:new Date().toISOString().slice(0,10), modules: isWorkplace? [{id:uid(),title:'Safety Policies & Emergency Exits',type:'doc',content:'Review safety handbook',duration:'30m'},{id:uid(),title:'Hygiene & Incident Reporting',type:'video',content:'Video demo',duration:'45m'},{id:uid(),title:'Quiz — Safety',type:'quiz',content:'Pass mark 70%',duration:'15m'}] : [{id:uid(),title:'Code of Conduct',type:'doc',content:'Company code',duration:'30m'},{id:uid(),title:'Quiz — Ethics',type:'quiz',content:'Pass mark 70%',duration:'15m'}]});
+      changed=true;
+    });
+  }
+  // upgrade weak courses (<5 modules) to robust 5-module versions
+  const robustMap={
+    'Work-Life Balance': [{title:'1. Understanding Burnout — Signals',type:'doc',duration:'20m',content:'Maslach inventory + 12 signals checklist'},{title:'2. Time & Energy Management',type:'video',duration:'30m',content:'Pomodoro, deep work (video)'},{title:'3. Recovery Toolkit',type:'doc',duration:'20m',content:'Sleep, movement, mindfulness'},{title:'4. Wellness Plan Worksheet',type:'assignment',duration:'25m',content:'Draft 7-day plan'},{title:'5. Assessment — Balance',type:'quiz',duration:'15m',content:'10 Qs, 70% pass'}],
+    'Grit & Resilience': [{title:'1. Grit Principles',type:'doc',duration:'25m',content:'Angela Duckworth framework'},{title:'2. Growth Mindset in Practice',type:'video',duration:'30m',content:'Carol Dweck cases'},{title:'3. Resilience Stories — Nigeria',type:'video',duration:'30m',content:'Local entrepreneurs'},{title:'4. Reflection Journal',type:'assignment',duration:'20m',content:'Write 300-word story'},{title:'5. Final Test — Grit',type:'quiz',duration:'15m',content:'12 Qs, 70% pass'}],
+    'Effective Communication': [{title:'1. Writing Clearly — 5 Rules',type:'doc',duration:'25m',content:'Guide + examples'},{title:'2. Active Listening Lab',type:'video',duration:'20m',content:'Mirroring demos'},{title:'3. Feedback without Friction',type:'doc',duration:'20m',content:'SBI model'},{title:'4. Practice: Feedback Lab',type:'assignment',duration:'25m',content:'Peer feedback'},{title:'5. Quiz — Communication',type:'quiz',duration:'10m',content:'10 Qs, 70% pass'}],
+    'Customer Service Excellence': [{title:'1. Service Mindset & Empathy Map',type:'doc',duration:'40m',content:'Playbook + empathy canvas'},{title:'2. Handling Complaints — HEARD',type:'video',duration:'45m',content:'HEARD technique demos'},{title:'3. Role-play: Difficult Customer',type:'assignment',duration:'30m',content:'Record 2-min voice note'},{title:'4. NPS & Follow-up',type:'doc',duration:'25m',content:'Follow-up scripts'},{title:'5. Final Test — Service',type:'quiz',duration:'20m',content:'15 Qs, 70% pass'}],
+  };
+  Object.entries(robustMap).forEach(([title,mods])=>{
+    const tr=s.trainings.find(t=>t.title===title);
+    if(tr && tr.modules.length < 5){
+      tr.modules=mods.map(m=>({id:uid(), title:m.title, type:m.type, content:m.content, duration:m.duration}));
+      tr.description = title==='Work-Life Balance'?'Stress, boundaries, burnout prevention, focus & recovery.': title==='Grit & Resilience'?'Duckworth grit, growth mindset, bouncing back from failure.': title==='Effective Communication'?'Writing, listening, feedback without friction, remote comms.':'Handling complaints, empathy and service recovery for frontline teams.';
+      tr.duration= title==='Customer Service Excellence'?'3h': title==='Work-Life Balance'?'2h': title==='Grit & Resilience'?'2h':'1.5h';
+      changed=true;
+    }
+  });
+  s.employees.forEach(e=>{
+    if(!e.documents){ e.documents={}; changed=true; }
+    if(e.nin===undefined){ e.nin=''; e.payeTin=''; e.nhfNumber=''; e.pensionPin=''; e.nsitfNumber=''; changed=true; }
+    if(e.passportPhoto===undefined){ e.passportPhoto=null; changed=true; }
+    DOC_TYPES.forEach(dt=>{ if(e.documents[dt.key]===undefined) e.documents[dt.key]=null; });
+    if(e.passportPhoto && !e.documents['passport']){ e.documents['passport']={fileName:'passport.jpg', size:0, uploadedAt: new Date().toISOString().slice(0,10), dataUrl:e.passportPhoto, status:'verified'}; changed=true; }
+    if(e.documents['passport']?.dataUrl && !e.passportPhoto){ e.passportPhoto=e.documents['passport'].dataUrl; changed=true; }
+  });
+  return s;
+}
+function seedDemo(){
+  const today=new Date(); const fmt=(d)=>d.toISOString().slice(0,10);
+  const team=[
+    ['Chiamaka Nwosu','Operations Manager',420000, fmt(addDays(today,10-365*3)), '1990-06-15'],
+    ['Emeka Obi','Sales Lead',350000, fmt(addDays(today,-400)), fmt(addDays(today,10))],
+    ['Halima Sule','Accountant',380000, fmt(addDays(today,18-365*2)), '1988-11-02'],
+    ['Tobi Ogundele','Warehouse Supervisor',220000, fmt(addDays(today,-200)), '1995-01-20'],
+    ['Rita Ekwueme','Customer Support',180000, fmt(addDays(today,-90)), '1997-04-09'],
+    ['Yusuf Danladi','Driver',150000, fmt(addDays(today,-500)), '1992-08-30'],
+  ];
+  const employees=team.map(([name,role,gross,startDate,dob],i)=>({
+    id:uid(),name,role,gross,bank:'GTBank',account:'0123456789',startDate,dob,active:true,color:AVATAR_COLORS[i%AVATAR_COLORS.length],
+    nin:'', payeTin:'', nhfNumber:'', pensionPin:'', nsitfNumber:'', passportPhoto:null, documents:{}
+  }));
+  employees.forEach(e=> DOC_TYPES.forEach(dt=> e.documents[dt.key]=null));
+  // seed some docs for demo
+  employees[0].documents['cv']={fileName:'Chiamaka_CV.pdf', size:124000, uploadedAt:fmt(addDays(today,-300)), dataUrl:null, status:'verified'};
+  employees[0].documents['offer']={fileName:'Offer.pdf', size:89000, uploadedAt:fmt(addDays(today,-295)), dataUrl:null, status:'verified'};
+  employees[0].nin='12345678901'; employees[0].payeTin='PAYE-001'; employees[0].nhfNumber='NHF-8841'; employees[0].pensionPin='PEN123456';
+  employees[1].nin='98765432109'; employees[1].payeTin='PAYE-002';
+  const reviews=[
+    {id:uid(), employeeId:employees[0].id, rating:5, notes:'Consistently keeps operations running smoothly.', date:fmt(addDays(today,-45))},
+    {id:uid(), employeeId:employees[1].id, rating:4, notes:'Strong quarter on new client acquisition.', date:fmt(addDays(today,-20))},
+  ];
+  const candidates=[
+    {id:uid(), name:'Ngozi Umeh', role:'Warehouse Assistant', stage:'Interview', appliedDate:fmt(addDays(today,-6)), notes:'Referred by Tobi'},
+    {id:uid(), name:'Femi Bello', role:'Sales Associate', stage:'Applied', appliedDate:fmt(addDays(today,-2)), notes:''},
+    {id:uid(), name:'Kelechi Ude', role:'Accountant (Assistant)', stage:'Offer', appliedDate:fmt(addDays(today,-12)), notes:'Offer sent'},
+  ];
+  const trainings=[
+    {id:uid(), title:'Workplace Safety Essentials', category:'Compliance', duration:'2.5h', description:'HSE Act-aligned: emergency, PPE, fire, hygiene, and incident reporting. Mandatory for all staff.', objectives:'Identify hazards, follow PPE, report incidents, evacuate safely.', modules:[
+      {id:uid(), title:'1. HSE Policy & Legal Duties', type:'doc', content:'Handbook: OSHA/Nigeria Factories Act duties (PDF + checklist)', duration:'30m'},
+      {id:uid(), title:'2. PPE & Workplace Hazards', type:'video', content:'Video: PPE demo, slips/trips, electrical', duration:'25m'},
+      {id:uid(), title:'3. Fire & Emergency Evacuation', type:'video', content:'Drill walkthrough + exit mapping exercise', duration:'30m'},
+      {id:uid(), title:'4. Hygiene & Incident Reporting', type:'assignment', content:'Complete incident form sample — submit for review', duration:'25m'},
+      {id:uid(), title:'5. Final Assessment — Safety', type:'quiz', content:'20 Qs, 70% pass, 3 attempts, certificate on pass', duration:'20m'},
+    ], required:true, createdAt:fmt(today)},
+    {id:uid(), title:'HR Compliance & Ethics', category:'Compliance', duration:'1.5h', description:'Code of conduct, confidentiality, anti-harassment, data protection (NDPA 2023).', objectives:'Apply code, protect data, handle grievances ethically.', modules:[
+      {id:uid(), title:'1. Code of Conduct & Conflicts', type:'doc', content:'Policy doc + scenario cards (10 cases)', duration:'30m'},
+      {id:uid(), title:'2. Confidentiality & NDPA', type:'doc', content:'Data handling guide + do/don\'ts', duration:'20m'},
+      {id:uid(), title:'3. Anti-Harassment & Grievance', type:'video', content:'Role-plays: speaking up safely', duration:'20m'},
+      {id:uid(), title:'4. Assessment — Ethics', type:'quiz', content:'15 Qs, 70% pass', duration:'15m'},
+    ], required:true, createdAt:fmt(today)},
+    {id:uid(), title:'Customer Service Excellence', category:'Skills', duration:'3h', description:'Service recovery, empathy, difficult customers, NPS. For Sales & Support.', objectives:'De-escalate, empathize, close with satisfaction.', modules:[
+      {id:uid(), title:'1. Service Mindset & Empathy Map', type:'doc', content:'Playbook + empathy canvas', duration:'40m'},
+      {id:uid(), title:'2. Handling Complaints — HEARD', type:'video', content:'HEARD technique demos (5 videos)', duration:'45m'},
+      {id:uid(), title:'3. Role-play: Difficult Customer', type:'assignment', content:'Record 2-min voice note — peer review', duration:'30m'},
+      {id:uid(), title:'4. NPS & Follow-up', type:'doc', content:'Follow-up scripts + survey', duration:'25m'},
+      {id:uid(), title:'5. Final Test — Service', type:'quiz', content:'15 Qs, 70% pass', duration:'20m'},
+    ], required:false, createdAt:fmt(today)},
+    {id:uid(), title:'Work-Life Balance', category:'Wellness', duration:'2h', description:'Stress, boundaries, burnout prevention, focus & recovery.', objectives:'Set boundaries, manage energy, build recovery routine.', modules:[
+      {id:uid(), title:'1. Understanding Burnout — Signals', type:'doc', content:'Maslach inventory + 12 signals checklist', duration:'20m'},
+      {id:uid(), title:'2. Time & Energy Management', type:'video', content:'Pomodoro, deep work, no-meeting blocks (video)', duration:'30m'},
+      {id:uid(), title:'3. Recovery Toolkit', type:'doc', content:'Sleep, movement, mindfulness micro-habits', duration:'20m'},
+      {id:uid(), title:'4. Wellness Plan Worksheet', type:'assignment', content:'Draft 7-day balance plan — manager review', duration:'25m'},
+      {id:uid(), title:'5. Assessment — Balance', type:'quiz', content:'10 Qs, 70% pass', duration:'15m'},
+    ], required:false, createdAt:fmt(today)},
+    {id:uid(), title:'Grit & Resilience', category:'Mindset', duration:'2h', description:'Duckworth grit, growth mindset, bouncing back from failure.', objectives:'Reframe failure, sustain effort, build resilience.', modules:[
+      {id:uid(), title:'1. Grit Principles', type:'doc', content:'Angela Duckworth framework + self-test', duration:'25m'},
+      {id:uid(), title:'2. Growth Mindset in Practice', type:'video', content:'Carol Dweck cases — fixed vs growth', duration:'30m'},
+      {id:uid(), title:'3. Resilience Stories — Nigeria', type:'video', content:'Local entrepreneurs & grit interviews', duration:'30m'},
+      {id:uid(), title:'4. Reflection Journal', type:'assignment', content:'Write 300-word grit story', duration:'20m'},
+      {id:uid(), title:'5. Final Test — Grit', type:'quiz', content:'12 Qs, 70% pass', duration:'15m'},
+    ], required:false, createdAt:fmt(today)},
+    {id:uid(), title:'Effective Communication', category:'Skills', duration:'1.5h', description:'Writing, listening, feedback without friction, remote comms.', objectives:'Write clearly, listen actively, give feedback well.', modules:[
+      {id:uid(), title:'1. Writing Clearly — 5 Rules', type:'doc', content:'Guide + before/after examples', duration:'25m'},
+      {id:uid(), title:'2. Active Listening Lab', type:'video', content:'Mirroring, paraphrasing demos', duration:'20m'},
+      {id:uid(), title:'3. Feedback without Friction', type:'doc', content:'SBI model + scripts', duration:'20m'},
+      {id:uid(), title:'4. Practice: Feedback Lab', type:'assignment', content:'Peer feedback — record & reflect', duration:'25m'},
+      {id:uid(), title:'5. Quiz — Communication', type:'quiz', content:'10 Qs, 70% pass', duration:'10m'},
+    ], required:false, createdAt:fmt(today)},
+  ];
+  const enrollments=[
+    {id:uid(), employeeId:employees[2].id, trainingId: trainings[0].id, progress:66, completedModules:[trainings[0].modules[0].id], enrolledAt:fmt(addDays(today,-10)), completedAt:null, score:null, certificateId:null},
+    {id:uid(), employeeId:employees[0].id, trainingId: trainings[1].id, progress:100, completedModules: trainings[1].modules.map(m=>m.id), enrolledAt:fmt(addDays(today,-20)), completedAt:fmt(addDays(today,-5)), score:85, certificateId: uid()},
+  ];
+  const certificates=enrollments.filter(e=>e.certificateId).map(e=>({id:e.certificateId, employeeId:e.employeeId, trainingId:e.trainingId, issuedAt:e.completedAt, score:e.score}));
+  const leaves=[
+    {id:uid(), employeeId:employees[0].id, type:'annual', from:fmt(addDays(today,5)), to:fmt(addDays(today,9)), days:5, reason:'Family event', status:'approved', createdAt:fmt(addDays(today,-2))},
+    {id:uid(), employeeId:employees[1].id, type:'sick', from:fmt(addDays(today,1)), to:fmt(addDays(today,2)), days:2, reason:'Medical', status:'pending', createdAt:fmt(today)},
+  ];
+  const attendance=[
+    {id:uid(), employeeId:employees[0].id, date:fmt(today), clockIn:'08:12', clockOut:'17:05', status:'present'},
+    {id:uid(), employeeId:employees[1].id, date:fmt(today), clockIn:'08:45', clockOut:null, status:'present'},
+    {id:uid(), employeeId:employees[3].id, date:fmt(today), clockIn:null, clockOut:null, status:'absent'},
+  ];
+  const orgUnits=[
+    {id:'dept1', name:'Operations', head:employees[0].id, color:'#4C8577'},
+    {id:'dept2', name:'Sales & Support', head:employees[1].id, color:'#E2735B'},
+    {id:'dept3', name:'Finance', head:employees[2].id, color:'#C9A227'},
+    {id:'dept4', name:'Warehouse', head:employees[3].id, color:'#7D6BA6'},
+  ];
+  employees.forEach((e,i)=> e.department = orgUnits[i%orgUnits.length].id);
+  return {companyName:'', countryCode:'NG', currency:'NGN', locale:'en-NG', timezone:'Africa/Lagos', employees, runs:[], compliance:{}, reviews, candidates, trainings, enrollments, certificates, leaves, attendance, orgUnits, currentRole:'owner', viewingEmployeeId:null};
+}
+
+export default function Page(){
+  const [state,setState]=useState(null);
+  const [currentTab,setCurrentTab]=useState('overview');
+  const [expandedRun,setExpandedRun]=useState(null);
+  const [online,setOnline]=useState(true);
+  const [modal,setModal]=useState(null);
+  const [toast,setToast]=useState(null);
+  const [docFilter,setDocFilter]=useState('All');
+  const [licenseKey,setLicenseKey]=useState('');
+  const [licenseOk,setLicenseOk]=useState(false);
+  const [licenseChecking,setLicenseChecking]=useState(true);
+  const [apiUser,setApiUser]=useState(null);
+  const [cloudLoading,setCloudLoading]=useState(false);
+  const [cloudStateReady,setCloudStateReady]=useState(false);
+  const [subscription,setSubscription]=useState(null);
+  const [ownerDemoMode,setOwnerDemoMode]=useState(false);
+  const [authForm,setAuthForm]=useState({mode:'login',companyName:'',name:'',email:'',password:'',countryCode:'NG'});
+
+  function cloudOff(){
+    try{
+      const params=new URLSearchParams(window.location.search);
+      return params.get('local')==='1' || localStorage.getItem(CLOUD_OFF_KEY)==='1';
+    }catch{ return true; }
+  }
+  const cloudSyncEnabled=!!(getApiBase() && !cloudOff() && apiUser && getToken());
+  async function hydrateCloud(){
+    const me=getSessionUser();
+    if(me) setApiUser(me);
+    setCloudLoading(true);
+    try{
+      const company=await CompanyAPI.get().catch(()=>null);
+      if(company){
+        setSubscription(company);
+        const now=Date.now();
+        const trialExpired=company.subscriptionStatus!=="active" && company.trialEndsAt && new Date(company.trialEndsAt).getTime()<now;
+        const paidExpired=company.subscriptionStatus==="active" && company.subscriptionEndsAt && new Date(company.subscriptionEndsAt).getTime()<now;
+        if(trialExpired || paidExpired) return;
+      }
+      const remoteState=await CompanyStateAPI.get().catch(()=>null);
+      const [emps,runs]=await Promise.all([EmployeesAPI.list().catch(()=>null), PayrollAPI.list().catch(()=>null)]);
+      setState(s=>{
+        if(!s) return s;
+        const ns=JSON.parse(JSON.stringify(s));
+        if(remoteState && remoteState.state && typeof remoteState.state==="object"){
+          Object.assign(ns, remoteState.state);
+          const defaults={leaves:[],attendance:[],orgUnits:[],compliance:{},reviews:[],candidates:[],enrollments:[],certificates:[]};
+          Object.entries(defaults).forEach(([key,value])=>{ if(!(key in remoteState.state)) ns[key]=value; });
+        } else {
+          ns.leaves=[]; ns.attendance=[]; ns.orgUnits=[]; ns.compliance={}; ns.reviews=[]; ns.candidates=[]; ns.enrollments=[]; ns.certificates=[];
+        }
+        if(company && company.countryCode){ ns.countryCode=company.countryCode; ns.currency=company.currency; ns.locale=company.locale; ns.timezone=company.timezone; ns.companyName=company.name||ns.companyName; }
+        if(Array.isArray(emps)){
+          if(me && me.role==='employee'){
+            ns.employees=emps.map((e,i)=>cloudEmployeeToLocal(e,i));
+            ns.currentRole='employee';
+            ns.viewingEmployeeId=me.employeeId||emps[0]?.id||null;
+          } else {
+            ns.employees=emps.map((e,i)=>{
+              const prev=(s.employees||[]).find(x=>x.id===e.id);
+              const m=cloudEmployeeToLocal(e,i);
+              if(prev){ m.color=prev.color; m.department=prev.department||m.department; m.documents=prev.documents||m.documents; m.passportPhoto=prev.passportPhoto||null; }
+              if(!m.department && ns.orgUnits && ns.orgUnits.length) m.department=ns.orgUnits[i%ns.orgUnits.length].id;
+              return m;
+            });
+          }
+        }
+        if(Array.isArray(runs)){
+          if(me && me.role==='employee'){
+            ns.runs=runs.map((r,i)=>({ id:'cloud-'+r.period+'-'+i, period:r.period, createdAt:r.createdAt, lines:r.line?[{...r.line,bank:r.line.bank||'',account:r.line.account||'',nsitf:Math.round((r.line.gross||0)*0.01)}]:[], status:'paid' }));
+          } else ns.runs=runs.map(cloudRunToLocal);
+        }
+        return ns;
+      });
+      setCloudStateReady(!!remoteState);
+    }finally{ setCloudLoading(false); }
+  }
+
+  useEffect(()=>{
+    const params=new URLSearchParams(window.location.search);
+    const freshDemo=params.get('freshDemo')==='1' && params.get('demo')==='1' && params.get('local')==='1';
+    const isOwnerDemo=params.get('demo')==='1' && params.get('local')==='1';
+    setOwnerDemoMode(isOwnerDemo);
+    let loaded;
+    if(freshDemo){
+      clearSession();
+      loaded=seedDemo();
+      saveState(loaded);
+      params.delete('freshDemo');
+      const nextQuery=params.toString();
+      window.history.replaceState({},'',window.location.pathname+(nextQuery?'?'+nextQuery:'')+window.location.hash);
+    } else {
+      loaded=loadState();
+      if(loaded){ loaded=migrateState(loaded); }
+      else { loaded=seedDemo(); saveState(loaded); }
+    }
+    setState(loaded);
+    // Cloud backend (opt-in): hydrate employees + payroll when configured + logged in
+    try{ if(getApiBase() && !cloudOff() && getToken()) hydrateCloud(); else { const me=getSessionUser(); if(me && getToken()) setApiUser(me); } }catch{}
+    const updateOnline=()=>setOnline(navigator.onLine);
+    updateOnline();
+    window.addEventListener('online',updateOnline);
+    window.addEventListener('offline',updateOnline);
+    if('serviceWorker' in navigator){ navigator.serviceWorker.register('/sw.js').catch(()=>{}); }
+    // SaaS license check — reuse the URLSearchParams object created above.
+    const urlKey=params.get('license');
+    const demoBypass=params.get('demo')==='1';
+    if(demoBypass){ setLicenseOk(true); setLicenseChecking(false); }
+    else if(urlKey && isValidFormat(urlKey)){
+      fetch('/api/verify',{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key:urlKey})})
+        .then(r=>r.json()).then(j=>{
+          if(j.valid){ saveLicense(urlKey,{plan:j.plan}); setLicenseOk(true); }
+          else { setLicenseKey(normalizeKey(urlKey)); setLicenseOk(false); }
+          setLicenseChecking(false);
+        }).catch(()=>{ setLicenseKey(normalizeKey(urlKey)); setLicenseOk(false); setLicenseChecking(false); });
+    }
+    else {
+      const stored=getStoredKey();
+      if(stored && isValidFormat(stored)){
+        fetch('/api/verify',{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key:stored})}).then(r=>r.json()).then(j=>{
+          setLicenseOk(!!j.valid); setLicenseChecking(false); if(!j.valid) setLicenseKey(stored);
+        }).catch(()=>{ setLicenseOk(false); setLicenseKey(stored); setLicenseChecking(false); });
+      } else { if(stored) setLicenseKey(stored); setLicenseOk(false); setLicenseChecking(false); }
+    }
+    return ()=>{ window.removeEventListener('online',updateOnline); window.removeEventListener('offline',updateOnline); };
+  },[]);
+  useEffect(()=>{ if(state) saveState(state); },[state]);
+  useEffect(()=>{
+    if(!state || !cloudSyncEnabled || !cloudStateReady || cloudLoading || !apiUser) return;
+    const payload=companyStatePayload(state);
+    const timer=setTimeout(()=>{ CompanyStateAPI.save(payload).catch(err=>{ if(err?.message && /trial has ended|subscription has expired/i.test(err.message)) setToast(err.message); }); },600);
+    return ()=>clearTimeout(timer);
+  },[state,cloudSyncEnabled,cloudStateReady,cloudLoading,apiUser]);
+  useEffect(()=>{ if(!online) setToast("You are offline — changes will sync when you reconnect."); else if(toast && toast.includes("offline")) setToast("Back online ✓"); },[online]);
+
+  if(licenseChecking || !state) return <div style={{padding:60,textAlign:'center',color:'#B39FB0'}}>Loading Medash HR Suite…</div>;
+  async function handleLicenseSubmit(e){
+    e.preventDefault();
+    if(!isValidFormat(licenseKey)) { showToast('Invalid key. Format: MEDASH-XXXX-XXXX-...'); return; }
+    try{
+      const res=await fetch('/api/verify',{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key:licenseKey})});
+      const j=await res.json();
+      if(j.valid){ saveLicense(licenseKey,{plan:j.plan}); setLicenseOk(true); showToast('License activated ✓'); }
+      else { showToast(j.reason||'Invalid license'); }
+    }catch{
+      showToast('Verification is unavailable. Please reconnect or contact support; activation has not been completed.');
+    }
+  }
+  if(!licenseOk && cloudOff()){
+    return (
+      <div style={{minHeight:'100vh', background:'#241623', color:'#EDEEF2', display:'flex', alignItems:'center', justifyContent:'center', padding:24}}>
+        <div style={{maxWidth:520, width:'100%', background:'#EDEEF2', color:'#201526', borderRadius:12, padding:32, boxShadow:'0 20px 60px rgba(0,0,0,0.4)'}}>
+          <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:12}}><div style={{width:36,height:36,borderRadius:'50% 50% 50% 6px',background:'#E2735B'}}/><div><div style={{fontFamily:'Newsreader, serif',fontStyle:'italic',fontWeight:700,fontSize:22}}>Medash HR Suite</div><div style={{fontSize:12,opacity:0.6}}>Payroll, HR & Compliance — SaaS License</div></div></div>
+          <h2 style={{fontFamily:'Newsreader, serif',fontSize:18,marginBottom:8}}>Enter your license key</h2>
+          <p style={{fontSize:13,opacity:0.7,lineHeight:1.5}}>You purchased on <b>Selar</b>. Paste the key from your delivery email. Keys look like <code style={{background:'#fff',padding:'2px 6px',borderRadius:4}}>MEDASH-XXXX-XXXX-XXXX</code>. Need help? <a href="https://wa.me/2348026892077" target="_blank" rel="noreferrer" style={{color:'#4C8577',fontWeight:600}}>WhatsApp +234 802 689 2077</a></p>
+          <form onSubmit={handleLicenseSubmit} style={{marginTop:16}}>
+            <input value={licenseKey} onChange={ev=>setLicenseKey(ev.target.value)} placeholder="MEDASH-XXXX-XXXX-XXXX" style={{width:'100%',padding:'12px 14px',borderRadius:8,border:'1px solid rgba(32,21,38,0.2)',fontFamily:'IBM Plex Mono',fontSize:14,background:'#fff'}}/>
+            <button type="submit" className="btn btn-primary" style={{width:'100%',marginTop:12,padding:12}}>Activate license</button>
+          </form>
+          <div style={{marginTop:14,display:'flex',gap:8,flexWrap:'wrap'}}>
+            <a href="https://selar.com/5w877x1957" target="_blank" rel="noreferrer" style={{fontSize:12,background:'#201526',color:'#fff',padding:'8px 12px',borderRadius:6,textDecoration:'none'}}>Buy on Selar</a>
+            <button onClick={()=>{ try{const old=localStorage.getItem('medash_state_v1'); sessionStorage.setItem('medash_owner_demo_backup',old===null?'__EMPTY__':old);}catch{} clearSession(); location.href='?demo=1&local=1&freshDemo=1'; }} style={{fontSize:12,border:'1px solid #E2735B',padding:'9px 12px',borderRadius:6,textDecoration:'none',background:'#E2735B',color:'#fff',fontWeight:700,cursor:'pointer'}}>Owner demo login · sample data</button>
+            <button onClick={()=>{ setLicenseKey(''); clearLicense(); }} style={{fontSize:12,background:'transparent',border:'1px solid rgba(32,21,38,0.2)',padding:'8px 12px',borderRadius:6,cursor:'pointer'}}>Clear</button>
+          </div>
+          <p style={{fontSize:11,opacity:0.7,marginTop:14}}>Demo uses fictional sample data in this browser only; it does not sign you into a real company or change cloud records.</p>
+          <p style={{fontSize:11,opacity:0.55,marginTop:14}}>Developed by <b>Next Level Global</b>. Selar checkout is available; automatic payment verification is not enabled yet, so license activation must be handled manually.</p>
+        </div>
+      </div>
+    );
+  }
+  const trialExpired = !!(subscription && (
+    (subscription.subscriptionStatus !== "active" && subscription.trialEndsAt && new Date(subscription.trialEndsAt).getTime() < Date.now()) ||
+    (subscription.subscriptionStatus === "active" && subscription.subscriptionEndsAt && new Date(subscription.subscriptionEndsAt).getTime() < Date.now())
+  ));
+  if (trialExpired) {
+    return <div style={{minHeight:"100vh",background:"#241623",color:"#EDEEF2",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+      <div style={{maxWidth:520,width:"100%",background:"#EDEEF2",color:"#201526",borderRadius:12,padding:32}}>
+        <h1 style={{fontFamily:"Newsreader,serif",fontSize:28,marginTop:0}}>{subscription?.subscriptionStatus==="active" ? "Your Medash subscription has expired" : "Your Medash trial has ended"}</h1>
+        <p style={{fontSize:14,lineHeight:1.7}}>Your company’s access is paused. Contact Medash to arrange manual subscription activation. Your company data has not been deleted.</p>
+        <a href="https://wa.me/2348026892077?text=Hello%2C%20please%20help%20me%20activate%20my%20Medash%20HR%20Suite%20subscription." target="_blank" rel="noreferrer" style={{display:"inline-block",background:"#E2735B",color:"#fff",padding:"12px 16px",borderRadius:7,textDecoration:"none",fontWeight:600}}>Contact Medash support</a>
+        <button onClick={()=>{clearSession();setApiUser(null);setSubscription(null);}} style={{display:"block",marginTop:14,background:"transparent",border:"1px solid rgba(32,21,38,.2)",padding:"10px 14px",borderRadius:7,cursor:"pointer"}}>Log out</button>
+      </div>
+    </div>;
+  }
+  const cloudBase=getApiBase();
+  const cloudMode=!!(cloudBase && !cloudOff() && apiUser && getToken());
+  const tabs=visibleTabs(cloudMode && apiUser.role==='employee' ? 'employee' : state.currentRole);
+  const activeTabs=tabs.includes(currentTab)?currentTab:tabs[0];
+  const currentGroup=NAV_GROUPS.find(group=>group.tabs.includes(activeTabs))||NAV_GROUPS[0];
+  if(activeTabs!==currentTab) setCurrentTab(activeTabs);
+  function update(fn){ setState(s=>{ const ns=JSON.parse(JSON.stringify(s)); fn(ns); return ns; }); }
+  function showToast(m){ setToast(m); setTimeout(()=>setToast(null),2800); }
+  const period=nextPeriod(state.runs);
+  const activeEmployees=state.employees.filter(e=>e.active);
+  if(cloudBase && !cloudOff() && !apiUser){
+    return <AuthScreen authForm={authForm} setAuthForm={setAuthForm} showToast={showToast} onAuth={()=>{ hydrateCloud(); }} />;
+  }
+
+  return (
+    <>
+      <style>{`
+        :root{--bg:#241623;--bg-2:#2E1D2D;--paper:#EDEEF2;--paper-dim:#E0E2E8;--ink:#201526;--coral:#E2735B;--gold:#C9A227;--teal:#4C8577;--muted:#B39FB0;--line:rgba(237,238,242,0.09);}
+        header{padding:30px 40px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:20px;}
+        .brand{display:flex;align-items:center;gap:12px;padding-bottom:22px;}
+        .brand-mark{width:32px;height:32px;border-radius:50% 50% 50% 6px;background:var(--coral);position:relative;flex-shrink:0;}
+        .brand-mark::after{content:'';position:absolute;inset:0;margin:auto;width:11px;height:11px;border-radius:50%;background:var(--bg);}
+        .stats{display:flex;gap:30px;flex-wrap:wrap;padding-bottom:22px;}
+        .stat .label{font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:4px;}
+        .stat .value{font-family:'Newsreader',serif;font-size:23px;font-weight:600;}
+        nav.tabs{display:flex;gap:4px;padding:0 40px;border-bottom:1px solid var(--line);overflow-x:auto;}
+        .tab-btn{background:none;border:none;color:var(--muted);padding:12px 16px;font-size:13px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;}
+        .tab-btn.active{color:var(--paper);border-bottom-color:var(--coral);}
+        main{padding:28px 40px 60px;}
+        .panel-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:14px;}
+        .panel-head h2{font-family:'Newsreader',serif;font-size:19px;font-weight:600;}
+        .btn{font-size:13px;font-weight:600;padding:10px 18px;border-radius:6px;border:none;cursor:pointer;}
+        .btn-primary{background:var(--coral);color:var(--paper);}
+        .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;}
+        .card{background:var(--paper);color:var(--ink);border-radius:8px;padding:18px;box-shadow:0 10px 26px rgba(0,0,0,0.18);display:flex;flex-direction:column;gap:12px;}
+        .card.inactive{opacity:0.5;}
+        .run-row{background:var(--paper);color:var(--ink);border-radius:8px;padding:16px 20px;margin-bottom:10px;box-shadow:0 6px 18px rgba(0,0,0,0.14);}
+        .overlay{position:fixed;inset:0;background:rgba(9,8,12,0.72);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:50;padding:24px;}
+        .modal{background:var(--paper);color:var(--ink);width:100%;max-width:640px;border-radius:8px;padding:28px 30px;max-height:88vh;overflow-y:auto;}
+        .field{margin-bottom:12px;}
+        .field label{display:block;font-size:12px;font-weight:600;margin-bottom:5px;}
+        .field input,.field select{width:100%;padding:9px 11px;border-radius:5px;border:1px solid rgba(32,21,38,0.2);font-size:13px;background:#fff;}
+        .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+        @media(max-width:720px){header,main,nav.tabs{padding-left:20px;padding-right:20px;}.field-row{grid-template-columns:1fr;}}
+      `}</style>
+
+      <div style={{background: online? '#4C8577':'#E2735B', color:'#fff', textAlign:'center', fontSize:12, padding:'6px 10px', fontWeight:600}}>
+        {online? '● Online — synced':'○ Offline — working locally, will sync when reconnected'} &nbsp;|&nbsp; Medash HR Suite works fully offline &nbsp;|&nbsp; Licensed {getStoredKey()? `· ${getStoredKey().slice(0,14)}…` : ''}
+        <button onClick={()=>{ if(confirm('Remove license?')){ clearLicense(); setLicenseOk(false); setLicenseKey(''); location.reload(); } }} style={{marginLeft:10, background:'rgba(0,0,0,0.2)', color:'#fff', border:'none', padding:'2px 8px', borderRadius:10, fontSize:10, cursor:'pointer'}}>Sign out</button>
+      </div>
+      {toast && <div style={{position:'fixed', bottom:20, left:'50%', transform:'translateX(-50%)', background:'#201526', color:'#EDEEF2', padding:'10px 16px', borderRadius:8, fontSize:13, zIndex:60}}>{toast}</div>}
+
+      <header>
+        <div className="brand">
+          <div className="brand-mark"></div>
+          <div>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <h1 style={{fontFamily:'Newsreader, serif', fontSize:22, fontWeight:600, fontStyle:'italic'}}>Medash HR Suite</h1>
+              <span style={{fontSize:10,background:'rgba(237,238,242,0.08)',border:'1px solid var(--line)',padding:'2px 6px',borderRadius:20,color:'var(--muted)'}}>{state.companyName || '—'}</span>
+              <span aria-label="Active jurisdiction" title="Active jurisdiction for regional settings" style={{fontSize:11,background:'rgba(226,115,91,0.16)',border:'1px solid rgba(226,115,91,0.65)',padding:'5px 9px',borderRadius:20,color:'var(--paper)',fontWeight:700,whiteSpace:'nowrap'}}>🌍 Jurisdiction: {COUNTRY_LABELS[state.countryCode] || state.countryCode || 'Not set'}</span>
+            </div>
+            <p style={{fontSize:11.5, color:'var(--muted)', marginTop:2}}>Payroll, compliance & HR for teams of 5–20</p>
+            <div style={{marginTop:8,display:'flex',gap:6,alignItems:'center'}}>
+              <input
+                placeholder="Company name — e.g. GreenField Ltd"
+                value={state.companyName||''}
+                onChange={e=>update(s=>s.companyName=e.target.value)}
+                onBlur={()=>showToast(state.companyName? `Company: ${state.companyName}` : 'Company name cleared')}
+                style={{background:'var(--bg-2)',color:'var(--paper)',border:'1px solid var(--line)',borderRadius:6,padding:'7px 10px',fontSize:12.5, minWidth:240, maxWidth:320}}
+              />
+              <span style={{fontSize:10,color:'var(--muted)'}}>shown on payslips & reports</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div style={{display:'flex',gap:8,alignItems:'center',paddingBottom:22, flexWrap:'wrap'}}>
+            <select value={state.currentRole} onChange={e=>update(s=>{s.currentRole=e.target.value; if(s.currentRole==='employee'&& !s.viewingEmployeeId && s.employees.length) s.viewingEmployeeId=s.employees[0].id;})} style={{background:'var(--bg-2)',color:'var(--paper)',border:'1px solid var(--line)',borderRadius:6,padding:'8px 10px',fontSize:12.5}}>
+              <option value="owner">Viewing as: Owner</option>
+              <option value="admin">Viewing as: HR Admin</option>
+              <option value="employee">Viewing as: Employee</option>
+            </select>
+            {state.currentRole==='employee' && <select value={state.viewingEmployeeId||state.employees[0]?.id} onChange={e=>update(s=>s.viewingEmployeeId=e.target.value)} style={{background:'var(--bg-2)',color:'var(--paper)',border:'1px solid var(--line)',borderRadius:6,padding:'8px 10px',fontSize:12.5}}>
+              {state.employees.map(emp=><option key={emp.id} value={emp.id}>{emp.name}</option>)}
+            </select>}
+            <button onClick={()=>{
+              const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+              const url=URL.createObjectURL(blob);
+              const a=document.createElement('a'); a.href=url; a.download=`medash-backup-${new Date().toISOString().slice(0,10)}.json`; a.click(); URL.revokeObjectURL(url); showToast('Backup saved — keeps all data offline-safe');
+            }} style={{background:'#4C8577',color:'#fff',border:'none',borderRadius:6,padding:'8px 10px',fontSize:11,cursor:'pointer',fontWeight:700}}>⬇ Save / Backup</button>
+            <label style={{background:'transparent',border:'1px solid var(--line)',color:'var(--muted)',borderRadius:6,padding:'8px 10px',fontSize:11,cursor:'pointer'}}>⬆ Restore<input type="file" accept=".json" style={{display:'none'}} onChange={ev=>{ const f=ev.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ const j=JSON.parse(r.result); if(!j.employees) throw new Error('Invalid backup'); if(confirm(`Restore backup from ${j.companyName||'file'}? This will overwrite current data.`)){ const mig=migrateState(j); setState(mig); saveState(mig); showToast('Backup restored ✓'); }}catch(e){ alert('Invalid backup file'); } }; r.readAsText(f); }}/></label>
+            <button onClick={()=>{ if(confirm('Reset to demo data?')){ const s=seedDemo(); setState(s); saveState(s); showToast('Demo data restored'); } }} style={{background:'transparent',border:'1px solid var(--line)',color:'var(--muted)',borderRadius:6,padding:'8px 10px',fontSize:11,cursor:'pointer'}}>Reset demo</button>
+            {cloudMode
+              ? <span style={{fontSize:11,background:'rgba(76,133,119,0.2)',border:'1px solid rgba(76,133,119,0.5)',color:'#7FD1B9',borderRadius:6,padding:'8px 10px'}}>☁ {apiUser.email||apiUser.role}{cloudLoading?' · syncing…':''}</span>
+              : cloudBase
+                ? <span style={{fontSize:11,background:'transparent',border:'1px solid var(--line)',color:'var(--muted)',borderRadius:6,padding:'8px 10px'}}>○ Offline mode</span>
+                : null}
+            {cloudMode && <button onClick={()=>{ if(confirm('Sign out of cloud? Local offline copy is kept.')){ clearSession(); setApiUser(null); showToast('Signed out of cloud'); } }} style={{background:'transparent',border:'1px solid var(--line)',color:'var(--muted)',borderRadius:6,padding:'8px 10px',fontSize:11,cursor:'pointer'}}>Sign out</button>}
+            {!cloudBase && <button onClick={()=>{ const u=prompt('Cloud backend URL (e.g. https://your-api.railway.app). Empty = stay offline:', ''); if(u && u.trim()){ setApiBaseOverride(u.trim()); location.reload(); } }} style={{background:'transparent',border:'1px solid var(--line)',color:'var(--muted)',borderRadius:6,padding:'8px 10px',fontSize:11,cursor:'pointer'}}>☁ Connect backend</button>}
+          </div>
+          {state.currentRole!=='employee' && <div className="stats">
+            <div className="stat"><div className="label">Team size</div><div className="value">{activeEmployees.length}</div></div>
+            <div className="stat"><div className="label">Monthly gross payroll</div><div className="value">{money(activeEmployees.reduce((s,e)=>s+Number(e.gross||0),0))}</div></div>
+            <div className="stat"><div className="label">Next payroll</div><div className="value">{periodLabel(period)}</div></div>
+            <div className="stat"><div className="label">Internal compliance items</div><div className="value" style={{color:'var(--coral)'}}>{state.countryCode==='NG' && state.runs.length ? ['paye','pension','nhf','nsitf'].filter(k=>complianceStatus(state, state.runs[state.runs.length-1].period,k)!=='filed').length : '—'}</div></div>
+          </div>}
+        </div>
+      </header>
+
+      {ownerDemoMode && <div role="status" style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',padding:'10px 40px',background:'rgba(201,162,39,0.14)',borderBottom:'1px solid rgba(201,162,39,0.4)',color:'var(--paper)',fontSize:12}}>
+        <span><strong>OWNER DEMO MODE</strong> · Sample data only. Changes stay in this browser and are not saved to a real company account.</span>
+        <button onClick={()=>{ try{const backup=sessionStorage.getItem('medash_owner_demo_backup'); if(backup!==null){ if(backup==='__EMPTY__') localStorage.removeItem('medash_state_v1'); else localStorage.setItem('medash_state_v1',backup); sessionStorage.removeItem('medash_owner_demo_backup'); } }catch{} clearSession(); const p=new URLSearchParams(window.location.search); p.delete('demo'); p.delete('local'); p.delete('freshDemo'); window.location.href=window.location.pathname+(p.toString()?'?'+p.toString():'')+window.location.hash; }} style={{background:'transparent',color:'var(--paper)',border:'1px solid var(--line)',borderRadius:6,padding:'6px 10px',cursor:'pointer',whiteSpace:'nowrap'}}>Exit demo</button>
+      </div>}
+      <nav className="tabs" aria-label="Main navigation" style={{alignItems:'stretch',flexWrap:'wrap',gap:8,paddingTop:10,paddingBottom:10}}>
+        {NAV_GROUPS.filter(group=>group.tabs.some(t=>tabs.includes(t))).map(group=>{
+          const groupTabs=group.tabs.filter(t=>tabs.includes(t));
+          const selected=groupTabs.includes(currentTab);
+          return <button key={group.key} className={`tab-btn ${selected?'active':''}`} onClick={()=>setCurrentTab(groupTabs.includes(currentTab)?currentTab:groupTabs[0])} style={{display:'flex',flexDirection:'column',alignItems:'flex-start',gap:4,textAlign:'left',whiteSpace:'normal',flex:'1 1 220px',maxWidth:360,border:selected?'1px solid var(--coral)':'1px solid var(--line)',borderRadius:8,padding:'11px 14px',background:selected?'rgba(226,115,91,0.12)':'transparent'}}>
+            <span style={{fontWeight:700,fontSize:13}}>{group.label}</span>
+            <span style={{fontWeight:400,fontSize:11,lineHeight:1.45,color:'var(--muted)'}}>{group.description}</span>
+          </button>;
+        })}
+        <label style={{display:'flex',alignItems:'center',gap:8,fontSize:11,color:'var(--muted)',whiteSpace:'nowrap'}}>
+          Open a page
+          <select aria-label="Open a page" value={activeTabs} onChange={e=>setCurrentTab(e.target.value)} style={{background:'var(--bg-2)',color:'var(--paper)',border:'1px solid var(--line)',borderRadius:6,padding:'9px 10px',fontSize:12,maxWidth:'min(48vw,260px)'}}>
+            {currentGroup.tabs.filter(t=>tabs.includes(t)).map(t=><option key={t} value={t}>{TAB_LABELS[t]}</option>)}
+          </select>
+        </label>
+      </nav>
+
+      <main>
+        {currentTab==='overview' && <HomePage state={state} setModal={setModal} />}
+        {currentTab==='team' && <Team state={state} update={update} setModal={setModal} showToast={showToast} />}
+        {currentTab==='docs' && <Documents state={state} update={update} setModal={setModal} showToast={showToast} docFilter={docFilter} setDocFilter={setDocFilter} />}
+        {currentTab==='regulatory' && <Regulatory state={state} update={update} />}
+        {currentTab==='training' && <Training state={state} update={update} setModal={setModal} showToast={showToast} />}
+        {currentTab==='leave' && <Leave state={state} update={update} setModal={setModal} showToast={showToast} />}
+        {currentTab==='attendance' && <Attendance state={state} update={update} setModal={setModal} showToast={showToast} />}
+        {currentTab==='org' && <Org state={state} update={update} setModal={setModal} showToast={showToast} />}
+        {currentTab==='runpayroll' && <RunPayroll state={state} update={update} setCurrentTab={setCurrentTab} showToast={showToast} />}
+        {currentTab==='history' && <History state={state} expandedRun={expandedRun} setExpandedRun={setExpandedRun} />}
+        {currentTab==='compliance' && <Compliance state={state} update={update} />}
+        {currentTab==='reviews' && <Reviews state={state} update={update} setModal={setModal} />}
+        {currentTab==='hiring' && <Hiring state={state} update={update} setModal={setModal} showToast={showToast} />}
+        {currentTab==='reports' && <Reports state={state} />}
+        {currentTab==='myprofile' && <MyProfile state={state} />}
+        {currentTab==='settings' && <CountrySettings state={state} update={update} showToast={showToast} cloudMode={cloudMode} />}
+      </main>
+      <footer style={{borderTop:'1px solid var(--line)',padding:'16px 40px',textAlign:'center',fontSize:12,color:'var(--muted)',background:'rgba(0,0,0,0.15)'}}>
+        Developed by <span style={{color:'var(--paper)',fontWeight:600}}>Next Level Global</span> · Contact <a href="https://wa.me/2348026892077" target="_blank" rel="noopener noreferrer" style={{color:'#25D366',textDecoration:'none',fontWeight:600}}>WhatsApp +234 802 689 2077</a> · Medash HR Suite works offline
+      </footer>
+
+      {modal && <Modal modal={modal} setModal={setModal} state={state} update={update} showToast={showToast} />}
+    </>
+  );
+}
+
+function HomePage({state,setModal}){
+  const lastRun=state.runs[state.runs.length-1];
+  const items=[{key:'paye',what:'PAYE remittance',agency:'State IRS'},{key:'pension',what:'Pension remittance',agency:'PenCom / PFA'},{key:'nhf',what:'NHF remittance',agency:'Federal Mortgage Bank'},{key:'nsitf',what:'NSITF contribution',agency:'NSITF'}];
+  const celebs=(()=>{
+    const today=new Date(); today.setHours(0,0,0,0);
+    const out=[];
+    state.employees.filter(e=>e.active).forEach(e=>{
+      if(e.dob){ const dob=new Date(e.dob); let next=new Date(today.getFullYear(),dob.getMonth(),dob.getDate()); if(next<today) next=new Date(today.getFullYear()+1,dob.getMonth(),dob.getDate()); const d=Math.round((next-today)/86400000); if(d<=30) out.push({emoji:'🎂',what:`${e.name}'s birthday`,when:d===0?'Today':`in ${d}d`,days:d}); }
+      if(e.startDate){ const sd=new Date(e.startDate); let next=new Date(today.getFullYear(),sd.getMonth(),sd.getDate()); if(next<today) next=new Date(today.getFullYear()+1,sd.getMonth(),sd.getDate()); const y=next.getFullYear()-sd.getFullYear(); const d=Math.round((next-today)/86400000); if(d<=30&&y>0) out.push({emoji:'🎉',what:`${e.name}'s ${y}-year anniversary`,when:d===0?'Today':`in ${d}d`,days:d}); }
+    });
+    return out.sort((a,b)=>a.days-b.days);
+  })();
+  const docCompletion = state.employees.length? Math.round(100 * state.employees.reduce((s,e)=> s + DOC_TYPES.filter(dt=> e.documents?.[dt.key]).length / DOC_TYPES.length,0)/state.employees.length):0;
+  return (<>
+    <section style={{marginBottom:24,padding:'22px 24px',background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:10}}>
+      <div style={{fontSize:10,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--muted)',fontWeight:700}}>HOME</div>
+      <h2 style={{fontFamily:'Newsreader, serif',fontSize:30,fontWeight:600,margin:'5px 0 4px'}}>Welcome to Medash HR Suite</h2>
+      <p style={{fontSize:13,color:'var(--muted)',lineHeight:1.6,margin:0}}>Your workplace at a glance. Manage your people, keep track of important tasks and access your HR tools from one place.</p>
+    </section>
+    {celebs.length>0 && <><div className="panel-head"><div><h2>Upcoming celebrations</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Birthdays and work anniversaries in next 30 days</p></div></div>
+    <div style={{display:'flex',gap:12,overflowX:'auto',paddingBottom:6,marginBottom:32}}>{celebs.map((c,i)=><div key={i} style={{flex:'0 0 auto',minWidth:200,background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:'14px 16px',display:'flex',gap:12,alignItems:'center'}}><span style={{fontSize:22}}>{c.emoji}</span><div><div style={{fontSize:12.5,fontWeight:600}}>{c.what}</div><div style={{fontSize:11,color:'var(--muted)'}}>{c.when}</div></div></div>)}</div></>}
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12,marginBottom:24}}>
+      <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:14}}><div style={{fontSize:10,letterSpacing:0.06+'em',textTransform:'uppercase',color:'var(--muted)'}}>Doc compliance</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{docCompletion}%</div><div style={{fontSize:11,color:'var(--muted)'}}>avg across team</div></div>
+      <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:14}}><div style={{fontSize:10,letterSpacing:0.06+'em',textTransform:'uppercase',color:'var(--muted)'}}>Staff with docs</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{state.employees.filter(e=>DOC_TYPES.some(dt=>e.documents?.[dt.key])).length}/{state.employees.length}</div></div>
+    </div>
+    <div className="panel-head"><div><h2>Compliance calendar</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>{state.countryCode==='NG'?'Internal reminders for the most recent payroll run':'Jurisdiction-specific deadlines are not configured'}</p></div></div>
+    {state.countryCode!=='NG' ? <div style={{color:'var(--muted)',padding:20,background:'var(--bg-2)',borderRadius:8,lineHeight:1.7}}>Medash does not currently provide a statutory compliance calendar for this jurisdiction. Confirm local deadlines with a qualified payroll or compliance professional. Nigerian PAYE, pension, NHF and NSITF reminders are not shown for UK or US companies.</div> :
+      !lastRun ? <div style={{color:'var(--muted)',textAlign:'center',padding:'30px 0'}}>Create a payroll record to start tracking internal reminders. Dates shown here are not certified statutory deadlines.</div> :
+      <><p style={{fontSize:11,color:'var(--muted)',lineHeight:1.6}}>Internal tracking only. Verify current 2026 Nigerian rules and filing deadlines with a qualified professional before relying on these reminders.</p>
+      <div style={{display:'flex',gap:12,overflowX:'auto',paddingBottom:6,marginBottom:32}}>
+        {items.map(it=>{
+          const status=complianceStatus(state,lastRun.period,it.key);
+          const due=getDueDates(lastRun.period)[it.key];
+          const d=daysUntil(new Date(due));
+          const dayText=status==='filed'?'✓':d<0?`${Math.abs(d)}d over`:`${d}d`;
+          return <div key={it.key} style={{flex:'0 0 auto',minWidth:190,background:'var(--bg-2)',border:`1px solid ${status==='overdue'?'rgba(226,115,91,0.6)':'var(--line)'}`,borderRadius:8,padding:'14px 16px'}}>
+            <div style={{fontFamily:'IBM Plex Mono',fontSize:19,fontWeight:600,color:status==='filed'?'var(--teal)':status==='overdue'?'var(--coral)':'var(--gold)'}}>{dayText}</div>
+            <div style={{fontSize:12.5,marginTop:4,fontWeight:500}}>{it.what}</div>
+            <div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{it.agency} · {periodLabel(lastRun.period)}</div>
+          </div>;
+        })}
+      </div></>
+    }
+
+  </>);
+}
+function Team({state,update,setModal,showToast}){
+  const cloudOn=!!(getApiBase() && getToken());
+  const cloudRole=getSessionUser()?.role;
+  async function cloudToggle(e){
+    try{ const r=await EmployeesAPI.update(e.id,{active:!e.active}); update(s=>{ s.employees.find(x=>x.id===e.id).active=r.active!==false; }); showToast(r.active!==false?'Reactivated (cloud) ✓':'Deactivated (cloud) ✓'); }
+    catch(err){ showToast('Cloud update failed: '+err.message); }
+  }
+  async function cloudRemove(e){
+    if(!confirm('Remove this teammate?')) return;
+    try{ await EmployeesAPI.remove(e.id); update(s=>{ s.employees=s.employees.filter(x=>x.id!==e.id); }); showToast('Removed (cloud) ✓'); }
+    catch(err){ showToast('Cloud remove failed: '+err.message); }
+  }
+  async function cloudInvite(e){
+    const email=prompt(`Invite ${e.name} — their login email:`);
+    if(!email) return;
+    try{ const r=await AuthAPI.inviteEmployee({employeeId:e.id,email}); prompt('Share this one-time invite link (7-day expiry):', r.inviteUrl); showToast('Invite created ✓'); }
+    catch(err){ showToast('Invite failed: '+err.message); }
+  }
+  return (<>
+    <div className="panel-head"><div><h2>Team</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Add or edit teammates. Employee document files and passport photos are browser-local, not cloud-backed.{cloudOn?' · employee records sync on':''}</p></div><div style={{display:'flex',gap:8}}><button className="btn btn-primary" onClick={()=>setModal({type:'employee',data:null})}>+ Add teammate</button></div></div>
+    {state.employees.length===0? <div style={{color:'var(--muted)',textAlign:'center',padding:30}}>No teammates yet.</div> :
+      <div className="grid">{state.employees.map(e=>{
+        const lastLine=[...state.runs].reverse().map(r=>(r.lines||[]).find(l=>l.employeeId===e.id)).find(Boolean);
+        const progress=Math.round(100*DOC_TYPES.filter(dt=>e.documents?.[dt.key]).length/DOC_TYPES.length);
+        return <div key={e.id} className={`card ${e.active?'':'inactive'}`}><div style={{display:'flex',gap:12,alignItems:'center'}}><div style={{width:40,height:40,borderRadius:'50%',overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Newsreader',fontWeight:600,color:'#fff',background:e.color,flexShrink:0}}>{e.passportPhoto ? <img src={e.passportPhoto} alt='' style={{width:'100%',height:'100%',objectFit:'cover'}}/> : initials(e.name)}</div><div style={{flex:1}}><div style={{fontWeight:600,fontSize:14,cursor:'pointer',color:'#201526',textDecoration:'underline'}} onClick={()=>setModal({type:'staffDocs',data:e.id})}>{e.name}</div><div style={{fontSize:11,opacity:0.6}}>{e.role}{e.active?'':' · inactive'} · {progress}% docs</div></div></div><div style={{display:'flex',justifyContent:'space-between',fontSize:12.5}}><span style={{opacity:0.55}}>Gross monthly</span><span style={{fontFamily:'IBM Plex Mono',fontWeight:600}}>{money(e.gross)}</span></div><div style={{display:'flex',justifyContent:'space-between',fontSize:12.5}}><span style={{opacity:0.55}}>Last recorded net pay</span><span style={{fontFamily:'IBM Plex Mono',fontWeight:600}}>{lastLine ? money(lastLine.net) : '—'}</span></div>
+        <div style={{display:'flex',gap:6,marginTop:2,flexWrap:'wrap'}}><button onClick={()=>setModal({type:'staffDocs',data:e.id})} style={{background:'var(--teal)',color:'#fff',border:'none',borderRadius:5,padding:'6px 10px',fontSize:11.5,cursor:'pointer'}}>📄 Docs</button><button onClick={()=>setModal({type:'employee',data:e.id})} style={{background:'#E0E2E8',border:'none',borderRadius:5,padding:'6px 10px',fontSize:11.5,cursor:'pointer',color:'#201526'}}>Edit</button><button onClick={()=>{ if(cloudOn) cloudToggle(e); else update(s=>{const emp=s.employees.find(x=>x.id===e.id); emp.active=!emp.active;}); }} style={{background:'#E0E2E8',border:'none',borderRadius:5,padding:'6px 10px',fontSize:11.5,cursor:'pointer',color:'#201526'}}>{e.active?'Deactivate':'Reactivate'}</button>{cloudOn && cloudRole!=='employee' && <button onClick={()=>cloudInvite(e)} style={{background:'#4C8577',color:'#fff',border:'none',borderRadius:5,padding:'6px 10px',fontSize:11.5,cursor:'pointer'}}>✉ Invite</button>}<button onClick={()=>{ if(cloudOn) cloudRemove(e); else { if(confirm('Remove this teammate?')) update(s=>{s.employees=s.employees.filter(x=>x.id!==e.id);}); showToast('Removed'); } }} style={{background:'transparent',border:'1px solid rgba(226,115,91,0.5)',borderRadius:5,padding:'6px 10px',fontSize:11.5,cursor:'pointer',color:'#E2735B'}}>Remove</button></div></div>;
+      })}</div>
+    }
+  </>);
+}
+function Documents({state,update,setModal,showToast,docFilter,setDocFilter}){
+  const cats=['All','Onboarding','IDs & Statutory','Appraisals'];
+  const shown=docFilter==='All'? DOC_TYPES : DOC_TYPES.filter(d=>d.category===docFilter);
+  const overall=state.employees.length? state.employees.reduce((s,e)=> s + DOC_TYPES.filter(dt=>e.documents?.[dt.key]).length,0) :0;
+  const totalReq=state.employees.length * DOC_TYPES.length;
+  return (<>
+    <div className="panel-head"><div><h2>Document repository</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Document checklist progress · {overall}/{totalReq} items recorded. Uploaded files remain in this browser only; use sample data until secure cloud document storage is available.</p></div><button className="btn btn-ghost" style={{color:'var(--paper)',borderColor:'var(--line)'}} onClick={()=>{
+      const header=['Staff',...DOC_TYPES.map(d=>d.label)].join(',');
+      const rows=state.employees.map(e=> [ `"${e.name}"`, ...DOC_TYPES.map(dt=> e.documents?.[dt.key]?'✓':'' ) ].join(',')).join('\n');
+      const csv=header+'\n'+rows; const blob=new Blob([csv],{type:'text/csv'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='medash-doc-compliance.csv'; a.click(); URL.revokeObjectURL(url);
+      showToast('CSV exported');
+    }}>Export CSV</button></div>
+    <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
+      {cats.map(c=><button key={c} onClick={()=>setDocFilter(c)} style={{padding:'6px 12px',borderRadius:20,fontSize:12,border:'1px solid var(--line)',background:docFilter===c?'var(--paper)':'transparent',color:docFilter===c?'var(--ink)':'var(--muted)',cursor:'pointer'}}>{c}</button>)}
+      <span style={{marginLeft:'auto',fontSize:12,color:'var(--muted)'}}>Click a row to edit staff documents. Sensitive local tax/identity fields are only shown for Nigeria.</span>
+    </div>
+    <div style={{overflowX:'auto',background:'#EDEEF2',borderRadius:8,padding:12}}>
+      <table style={{width:'100%',borderCollapse:'collapse',color:'#201526',fontSize:12, minWidth:900}}>
+        <thead><tr style={{background:'#E0E2E8'}}>
+          <th style={{textAlign:'left',padding:'8px 10px',position:'sticky',left:0,background:'#E0E2E8',minWidth:160}}>Staff</th>
+          {shown.map(dt=> <th key={dt.key} style={{textAlign:'center',padding:'8px 6px',fontSize:10,lineHeight:1.2}}><div>{dt.label}</div><div style={{fontSize:9,opacity:0.55}}>{dt.required?'*':''}</div></th>)}
+          <th style={{textAlign:'center',padding:'8px 10px'}}>IDs</th>
+          <th style={{textAlign:'center',padding:'8px 10px'}}>%</th>
+        </tr></thead>
+        <tbody>
+          {state.employees.map(e=>{
+            const pct=Math.round(100*DOC_TYPES.filter(dt=>e.documents?.[dt.key]).length/DOC_TYPES.length);
+            return <tr key={e.id} style={{borderBottom:'1px solid rgba(32,21,38,0.07)',cursor:'pointer'}} onClick={()=>setModal({type:'staffDocs',data:e.id})}>
+              <td style={{padding:'8px 10px',fontWeight:600,position:'sticky',left:0,background:'#EDEEF2',display:'flex',gap:8,alignItems:'center'}}><span style={{width:28,height:28,borderRadius:'50%',background:e.color,color:'#fff',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:11,overflow:'hidden',flexShrink:0}}>{e.passportPhoto ? <img src={e.passportPhoto} alt='' style={{width:'100%',height:'100%',objectFit:'cover'}}/> : initials(e.name)}</span>{e.name}<span style={{fontSize:10,opacity:0.55,marginLeft:4}}>{e.role}</span></td>
+              {shown.map(dt=>{
+                const doc=e.documents?.[dt.key];
+                return <td key={dt.key} style={{textAlign:'center',padding:'6px'}}><span style={{display:'inline-flex',width:22,height:22,borderRadius:'50%',alignItems:'center',justifyContent:'center',fontSize:12, background: doc?'#4C8577':'rgba(32,21,38,0.08)',color:doc?'#fff':'#8C3B28'}}>{doc?'✓':'·'}</span></td>;
+              })}
+              <td style={{padding:'6px 10px',fontSize:10,opacity:0.7}} onClick={ev=>ev.stopPropagation()}>
+                <div>NIN:{e.nin||'—'} · PAYE:{e.payeTin||'—'} · NHF:{e.nhfNumber||'—'}</div>
+              </td>
+              <td style={{textAlign:'center',fontFamily:'IBM Plex Mono',fontWeight:700, color: pct===100?'#4C8577':pct>=50?'#8A6B0F':'#8C3B28'}}>{pct}%</td>
+            </tr>;
+          })}
+        </tbody>
+      </table>
+      <div style={{fontSize:10,color:'rgba(32,21,38,0.55)',marginTop:8}}>* Required docs. IDs editable inside staff drawer. Files stored offline as base64 in localStorage (max ~5MB per file).</div>
+    </div>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12,marginTop:16}}>
+      {DOC_TYPES.map(dt=>{
+        const count=state.employees.filter(e=>e.documents?.[dt.key]).length;
+        const pct=state.employees.length? Math.round(100*count/state.employees.length):0;
+        return <div key={dt.key} style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:12}}><div style={{fontSize:11,color:'var(--muted)',textTransform:'uppercase'}}>{dt.category}</div><div style={{fontSize:13,fontWeight:600,marginTop:2}}>{dt.label}</div><div style={{display:'flex',alignItems:'center',gap:8,marginTop:8}}><div style={{flex:1,height:6,background:'rgba(237,238,242,0.15)',borderRadius:6,overflow:'hidden'}}><div style={{width:`${pct}%`,height:'100%',background:'var(--teal)'}}/></div><span style={{fontSize:11,fontFamily:'IBM Plex Mono'}}>{count}/{state.employees.length} · {pct}%</span></div></div>;
+      })}
+    </div>
+  </>);
+}
+function Regulatory({state,update}){
+  if(state.countryCode!=='NG') return <>
+    <div className="panel-head"><div><h2>Regulatory Payables</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Jurisdiction-specific statutory calculations</p></div></div>
+    <div style={{color:'var(--muted)',padding:22,background:'var(--bg-2)',borderRadius:8,lineHeight:1.7}}>
+      Regulatory payables for {COUNTRY_LABELS[state.countryCode]||'this jurisdiction'} are not configured. This page will not calculate or display Nigerian PAYE, pension, NHF or NSITF totals for UK or US companies. Use verified manual payroll figures and consult a qualified local payroll professional.
+    </div>
+  </>;
+  if(!state.runs.length) return <><div className="panel-head"><div><h2>Regulatory Payables</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Aggregated remittances due per period — PAYE, Pension, NHF, NSITF</p></div></div><div style={{color:'var(--muted)',textAlign:'center',padding:30}}>No payroll records yet. This Nigeria-only screen is internal tracking, not certified statutory payroll advice.</div></>;
+  const items=[
+    {key:'paye', label:'PAYE (State IRS)', color:'#E2735B'},
+    {key:'pension', label:'Pension (PenCom) — Employee + Employer', color:'#4C8577'},
+    {key:'nhf', label:'NHF (FMBN)', color:'#C9A227'},
+    {key:'nsitf', label:'NSITF (1% Employer)', color:'#7D6BA6'},
+  ];
+  const rows = [...state.runs].reverse().map(r=>{
+    const totals=r.lines.reduce((acc,l)=>({paye:acc.paye+l.monthlyPAYE, penEmp:acc.penEmp+l.pensionEmployee, penEmpr:acc.penEmpr+l.pensionEmployer, nhf:acc.nhf+l.nhf, nsitf:acc.nsitf+l.nsitf}), {paye:0,penEmp:0,penEmpr:0,nhf:0,nsitf:0});
+    const pensionTotal=totals.penEmp+totals.penEmpr;
+    const grand=totals.paye+pensionTotal+totals.nhf+totals.nsitf;
+    const statuses=items.map(it=> complianceStatus(state,r.period, it.key==='paye'?'paye':it.key==='pension'?'pension':it.key==='nhf'?'nhf':'nsitf'));
+    return {period:r.period, totals, pensionTotal, grand, statuses, lines:r.lines.length, createdAt:r.createdAt};
+  });
+  const allTotals=rows.reduce((a,r)=>({paye:a.paye+r.totals.paye, pension:a.pension+r.pensionTotal, nhf:a.nhf+r.totals.nhf, nsitf:a.nsitf+r.totals.nsitf, grand:a.grand+r.grand}),{paye:0,pension:0,nhf:0,nsitf:0,grand:0});
+  return (<>
+    <div className="panel-head"><div><h2>Nigeria internal regulatory totals</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Legacy figures from saved payroll records — not certified statutory amounts</p></div>
+      <button className="btn btn-primary" onClick={()=>{
+        const header=['Period','PAYE','Pension','NHF','NSITF','Grand Total','Status'].join(',');
+        const csv=[header, ...rows.map(r=> [periodLabel(r.period), r.totals.paye, r.pensionTotal, r.totals.nhf, r.totals.nsitf, r.grand, r.statuses.every(s=>s==='filed')?'Filed':'Pending'].join(','))].join('\n');
+        const blob=new Blob([csv],{type:'text/csv'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='regulatory-payables.csv'; a.click(); URL.revokeObjectURL(url);
+      }}>Export CSV</button>
+    </div>
+    <div style={{padding:12,marginBottom:14,borderRadius:8,background:'var(--bg-2)',color:'var(--muted)',fontSize:12,lineHeight:1.7}}>Internal tracking only. Nigerian tax rules changed in 2026; verify current calculations and deadlines with a qualified payroll professional before relying on these totals.</div>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:12,marginBottom:16}}>
+      <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:14}}><div style={{fontSize:10,color:'var(--muted)',textTransform:'uppercase'}}>Total PAYE due</div><div style={{fontFamily:'Newsreader',fontSize:20,fontWeight:600}}>{money(allTotals.paye)}</div></div>
+      <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:14}}><div style={{fontSize:10,color:'var(--muted)',textTransform:'uppercase'}}>Total Pension</div><div style={{fontFamily:'Newsreader',fontSize:20,fontWeight:600}}>{money(allTotals.pension)}</div><div style={{fontSize:11,color:'var(--muted)'}}>Ee + Er</div></div>
+      <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:14}}><div style={{fontSize:10,color:'var(--muted)',textTransform:'uppercase'}}>Total NHF</div><div style={{fontFamily:'Newsreader',fontSize:20,fontWeight:600}}>{money(allTotals.nhf)}</div></div>
+      <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:14}}><div style={{fontSize:10,color:'var(--muted)',textTransform:'uppercase'}}>Total NSITF</div><div style={{fontFamily:'Newsreader',fontSize:20,fontWeight:600}}>{money(allTotals.nsitf)}</div></div>
+      <div style={{background:'var(--paper)',color:'var(--ink)',borderRadius:8,padding:14}}><div style={{fontSize:10,opacity:0.55,textTransform:'uppercase'}}>Grand remittable</div><div style={{fontFamily:'Newsreader',fontSize:20,fontWeight:600}}>{money(allTotals.grand)}</div></div>
+    </div>
+    <div style={{overflowX:'auto',background:'#EDEEF2',borderRadius:8}}>
+      <table style={{width:'100%',borderCollapse:'collapse',color:'#201526',fontSize:13}}>
+        <thead><tr style={{background:'#E0E2E8'}}>
+          <th style={{textAlign:'left',padding:'12px 16px',fontSize:10.5,textTransform:'uppercase',opacity:0.55}}>Period</th>
+          <th style={{textAlign:'right',padding:'12px 10px',fontSize:10.5,textTransform:'uppercase',opacity:0.55}}>PAYE</th>
+          <th style={{textAlign:'right',padding:'12px 10px',fontSize:10.5,textTransform:'uppercase',opacity:0.55}}>Pension</th>
+          <th style={{textAlign:'right',padding:'12px 10px',fontSize:10.5,textTransform:'uppercase',opacity:0.55}}>NHF</th>
+          <th style={{textAlign:'right',padding:'12px 10px',fontSize:10.5,textTransform:'uppercase',opacity:0.55}}>NSITF</th>
+          <th style={{textAlign:'right',padding:'12px 16px',fontSize:10.5,textTransform:'uppercase',opacity:0.55}}>Total</th>
+          <th style={{textAlign:'left',padding:'12px 16px',fontSize:10.5,textTransform:'uppercase',opacity:0.55}}>Status</th>
+        </tr></thead>
+        <tbody>
+          {rows.map(r=>{
+            const allFiled=r.statuses.every(s=>s==='filed');
+            const anyOver=r.statuses.some(s=>s==='overdue');
+            return <tr key={r.period} style={{borderBottom:'1px solid rgba(32,21,38,0.07)'}}>
+              <td style={{padding:'12px 16px'}}><div style={{fontWeight:600}}>{periodLabel(r.period)}</div><div style={{fontSize:11,opacity:0.55}}>{r.lines} staff · {formatDate(r.createdAt)}</div></td>
+              <td style={{textAlign:'right',padding:'12px 10px',fontFamily:'IBM Plex Mono'}}>{money(r.totals.paye)}</td>
+              <td style={{textAlign:'right',padding:'12px 10px',fontFamily:'IBM Plex Mono'}}>{money(r.pensionTotal)}</td>
+              <td style={{textAlign:'right',padding:'12px 10px',fontFamily:'IBM Plex Mono'}}>{money(r.totals.nhf)}</td>
+              <td style={{textAlign:'right',padding:'12px 10px',fontFamily:'IBM Plex Mono'}}>{money(r.totals.nsitf)}</td>
+              <td style={{textAlign:'right',padding:'12px 16px',fontFamily:'IBM Plex Mono',fontWeight:700}}>{money(r.grand)}</td>
+              <td style={{padding:'12px 16px'}}><span style={{fontSize:11,padding:'4px 8px',borderRadius:20, background: allFiled?'rgba(76,133,119,0.15)':anyOver?'rgba(226,115,91,0.18)':'rgba(201,162,39,0.18)', color: allFiled?'#2E5C51':anyOver?'#8C3B28':'#8A6B0F'}}>{allFiled?'All filed':anyOver?'Overdue':'Pending'}</span></td>
+            </tr>;
+          })}
+        </tbody>
+      </table>
+    </div>
+    <div style={{marginTop:12,display:'flex',gap:8,flexWrap:'wrap'}}>
+      {items.map(it=> <span key={it.key} style={{fontSize:11,background:it.color,color:'#fff',padding:'4px 10px',borderRadius:20}}>{it.label}</span>)}
+    </div>
+  </>);
+}
+function printSchedule({companyName, period, lines}){
+  const totalNet=lines.reduce((s,l)=>s+(l.net||0),0);
+  const totalGross=lines.reduce((s,l)=>s+(l.gross||0),0);
+  const w=window.open('','_blank');
+  if(!w){ alert('Please allow pop-ups to print'); return; }
+  w.document.write(`
+  <html><head><title>Payment Schedule — ${periodLabel(period)}</title>
+  <style>
+    body{font-family:Inter, sans-serif; color:#1a1a1a; padding:32px; font-size:12px}
+    h1{font-family:Newsreader, serif; font-size:20px; margin:0}
+    h2{font-size:13px; color:#555; margin:4px 0 16px}
+    table{width:100%; border-collapse:collapse; margin-top:12px}
+    th{font-size:10px; text-transform:uppercase; letter-spacing:0.06em; text-align:left; padding:8px 6px; border-bottom:2px solid #222; background:#f3f3f3}
+    td{padding:8px 6px; border-bottom:1px solid #ddd; font-size:12px}
+    td.num{font-family:monospace; text-align:right}
+    .tot{font-weight:700; background:#f9f9f9}
+    .sign{margin-top:36px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:24px; font-size:12px}
+    .sign div{border-top:1px solid #222; padding-top:6px}
+    .hdr{display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #222; padding-bottom:12px}
+    @media print{ button{display:none} }
+  </style></head><body>
+  <div class="hdr"><div><h1>${companyName || 'Company'}</h1><h2>Monthly Payment Schedule — ${periodLabel(period)} &nbsp;|&nbsp; Generated ${formatDate(new Date())} ${formatDate(new Date(),{hour:'2-digit',minute:'2-digit'})}</h2></div><div style="text-align:right; font-size:11px">Medash HR Suite — Payroll for Small Teams<br/>Developed by Next Level Global · +2348026892077</div></div>
+  <table>
+    <thead><tr><th>#</th><th>Staff Name</th><th>Role</th><th>Bank</th><th>Account No.</th><th style="text-align:right">Gross</th><th style="text-align:right">PAYE</th><th style="text-align:right">Pension (8%)</th><th style="text-align:right">NHF</th><th style="text-align:right">Net Pay</th><th>Signature</th></tr></thead>
+    <tbody>
+      ${lines.map((l,i)=>`<tr><td>${i+1}</td><td>${l.name}</td><td>${l.role||''}</td><td>${l.bank||'—'}</td><td style="font-family:monospace">${l.account||'—'}</td><td class="num">${money(l.gross)}</td><td class="num">${money(l.monthlyPAYE||0)}</td><td class="num">${money(l.pensionEmployee||0)}</td><td class="num">${money(l.nhf||0)}</td><td class="num" style="font-weight:700">${money(l.net)}</td><td style="min-width:80px"></td></tr>`).join('')}
+      <tr class="tot"><td colspan="5" style="text-align:right">TOTAL</td><td class="num">${money(totalGross)}</td><td class="num">${money(lines.reduce((s,l)=>s+(l.monthlyPAYE||0),0))}</td><td class="num">${money(lines.reduce((s,l)=>s+(l.pensionEmployee||0),0))}</td><td class="num">${money(lines.reduce((s,l)=>s+(l.nhf||0),0))}</td><td class="num">${money(totalNet)}</td><td></td></tr>
+    </tbody>
+  </table>
+  <div style="margin-top:12px; font-size:11px; color:#555">Total Cost to Company (incl. 10% employer pension): <b>${money(lines.reduce((s,l)=>s+l.gross+(l.pensionEmployer||0),0))}</b> &nbsp;|&nbsp; ${lines.length} staff &nbsp;|&nbsp; Amount in words: ___________________________</div>
+  <div class="sign"><div>Prepared by<br/><br/><br/>Name / Signature / Date</div><div>Checked by Finance<br/><br/><br/>Name / Signature / Date</div><div>Approved by CEO<br/><br/><br/>Name / Signature / Date</div></div>
+  <div style="margin-top:24px; text-align:center"><button onclick="window.print()" style="padding:10px 18px; background:#201526; color:#fff; border:none; border-radius:6px; cursor:pointer">Print / Save as PDF</button> <button onclick="window.close()" style="padding:10px 18px; margin-left:8">Close</button></div>
+  </body></html>`);
+  w.document.close();
+}
+function printCertificate({companyName, cert, employee, training}){
+  const w=window.open('','_blank');
+  if(!w){ alert('Allow pop-ups'); return; }
+  w.document.write(`
+  <html><head><title>Certificate — ${training.title}</title>
+  <style>body{font-family:Newsreader, serif; display:flex; align-items:center; justify-content:center; min-height:100vh; background:#f7f5ef; margin:0; padding:32px}
+  .cert{background:#fff; border:6px double #201526; padding:40px 48px; max-width:720px; width:100%; text-align:center}
+  h1{font-size:28px; margin:0; font-style:italic} h2{font-size:15px; color:#555; margin:8px 0}
+  .name{font-size:26px; font-weight:700; margin:18px 0 4px} .score{font-family:monospace; color:#4C8577}
+  .foot{margin-top:32px; display:grid; grid-template-columns:1fr 1fr; gap:24px; font-size:12px} .foot div{border-top:1px solid #222; padding-top:6px}
+  @media print{ button{display:none} }
+  </style></head><body>
+  <div class="cert">
+    <div style="font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:#888">${companyName||'Company'}</div>
+    <h1>Certificate of Completion</h1><h2>${training.title} · ${training.category}</h2>
+    <div style="margin:20px 0; font-size:13px">This is to certify that</div>
+    <div class="name">${employee.name}</div><div style="font-size:12px; opacity:0.7">${employee.role} · ${companyName||''}</div>
+    <div style="margin:18px 0; font-size:13px">has successfully completed the training with score <span class="score">${cert.score||'—'}%</span></div>
+    <div style="font-size:11px; color:#666">Issued ${formatDate(cert.issuedAt)} · Certificate ID ${cert.id.slice(0,8).toUpperCase()} · Medash HR Suite by Next Level Global</div>
+    <div class="foot"><div>Training Coordinator<br/><br/>Signature / Date</div><div>CEO / HR Head<br/><br/>Signature / Date</div></div>
+    <div style="margin-top:18px"><button onclick="window.print()" style="padding:10px 18px; background:#201526; color:#fff; border:none; border-radius:6px; cursor:pointer">Print / Save PDF</button> <button onclick="window.close()" style="padding:10px 18px">Close</button></div>
+  </div></body></html>`);
+  w.document.close();
+}
+const libraryTemplates = [
+  {key:'workplace-conduct-v1',title:'Workplace Conduct & Respect',category:'Compliance',duration:'45m',description:'A practical introduction to respectful conduct, reporting concerns, anti-harassment principles, and professional communication.',passPercent:70,attemptsPerRound:3,materials:`MODULE 1 — RESPECTFUL WORKPLACE
+Treat colleagues, customers, and contractors with dignity. Avoid bullying, harassment, discrimination, threats, and humiliating behaviour. Professional disagreement is acceptable; personal attacks are not.
+
+MODULE 2 — EVERYDAY CONDUCT
+Communicate clearly, respect boundaries, protect confidential discussions, and follow reasonable workplace policies. Managers should model the standards they expect from their teams.
+
+MODULE 3 — RAISING A CONCERN
+Record relevant facts and dates, preserve appropriate evidence, and use the reporting channel described in your organisation's policy. Escalate urgent safety risks promptly. Do not retaliate against someone who raises a concern in good faith.`,questions:[
+    {id:'q1',text:'Which behaviour best supports a respectful workplace?',options:['Personal attacks during disagreement','Treating colleagues with dignity','Sharing private staff details','Ignoring reports of harassment'],correctIndex:1},
+    {id:'q2',text:'What is a useful first step when documenting a concern?',options:['Post it publicly','Delete related messages','Record relevant facts and dates','Confront everyone involved'],correctIndex:2},
+    {id:'q3',text:'How should a good-faith report be treated?',options:['With protection from retaliation','As automatic proof of guilt','As a reason to reduce shifts','As information to spread widely'],correctIndex:0}
+  ]},
+  {key:'data-protection-v1',title:'Data Protection & Confidentiality',category:'Data protection',duration:'50m',description:'Core practices for handling employee, customer, and business information responsibly across different jurisdictions.',passPercent:70,attemptsPerRound:3,materials:`MODULE 1 — HANDLE DATA LAWFULLY
+Collect personal information only for a clear business purpose and follow the laws and policies that apply to your organisation. Use only the information needed for the task.
+
+MODULE 2 — KEEP INFORMATION SECURE
+Use approved systems, strong unique passwords, multi-factor authentication where available, and access only the records required for your role. Do not send confidential files to personal accounts without authorisation.
+
+MODULE 3 — RETENTION AND INCIDENTS
+Follow approved retention and deletion schedules. If information is lost, sent to the wrong recipient, or accessed without permission, report it promptly through your organisation's incident process. Do not conceal or independently investigate a suspected breach beyond your role.`,questions:[
+    {id:'q1',text:'What is data minimisation?',options:['Collect every available detail','Keep all data forever','Collect only what is needed for a clear purpose','Share data with every team'],correctIndex:2},
+    {id:'q2',text:'You receive a file containing personal data you do not need. What should you do?',options:['Forward it to friends','Follow company policy and avoid unnecessary access or sharing','Upload it to a public drive','Keep a personal copy'],correctIndex:1},
+    {id:'q3',text:'What should you do after discovering a possible data incident?',options:['Delete all evidence immediately','Wait until someone asks','Post details online','Report it promptly using the approved process'],correctIndex:3}
+  ]},
+  {key:'cybersecurity-v1',title:'Cybersecurity Awareness',category:'Compliance',duration:'40m',description:'Recognise phishing, protect accounts and devices, and respond safely to suspicious activity.',passPercent:70,attemptsPerRound:3,materials:`MODULE 1 — RECOGNISE PHISHING
+Be cautious with unexpected urgency, unusual payment requests, unfamiliar links, attachments, and messages that ask for credentials. Verify requests using a trusted contact method rather than replying to the suspicious message.
+
+MODULE 2 — PROTECT ACCOUNTS AND DEVICES
+Use unique passwords and multi-factor authentication where available. Lock your screen, install approved updates, and use authorised software and storage. Never share passwords or one-time authentication codes.
+
+MODULE 3 — RESPOND TO SUSPICIOUS ACTIVITY
+Do not click further or forward suspicious attachments. Report the message or incident to the designated IT/security contact. If you entered credentials, report it immediately and follow instructions to secure the account.`,questions:[
+    {id:'q1',text:'An unexpected email demands an urgent password reset through a link. What is safest?',options:['Click immediately','Reply with your password','Verify through a trusted channel and report if suspicious','Forward it to all colleagues'],correctIndex:2},
+    {id:'q2',text:'Which practice best protects accounts?',options:['Reuse one password everywhere','Share one-time codes with a caller','Store passwords in a public note','Use unique passwords and multi-factor authentication'],correctIndex:3},
+    {id:'q3',text:'What should you do if you entered your password on a suspicious site?',options:['Report it immediately and follow account-security steps','Ignore it','Delete the email and tell nobody','Wait a month'],correctIndex:0}
+  ]},
+  {key:'health-safety-v1',title:'Workplace Health & Safety Basics',category:'Safety',duration:'45m',description:'Identify common hazards, follow safe procedures, and report incidents and near misses.',passPercent:70,attemptsPerRound:3,materials:`MODULE 1 — IDENTIFY HAZARDS
+Look for unsafe conditions such as blocked exits, spills, damaged equipment, poor ergonomics, and exposed cables. Follow local safety instructions and do not undertake work you are not trained or authorised to perform.
+
+MODULE 2 — PREVENT HARM
+Use required protective equipment, keep walkways clear, use equipment as instructed, and take appropriate breaks. Stop and seek guidance when a task appears unsafe.
+
+MODULE 3 — REPORT AND RESPOND
+Follow your workplace emergency plan. Report injuries, hazards, and near misses promptly, even when no one appears to be hurt. In an emergency, alert the appropriate responders and do not put yourself at unnecessary risk.`,questions:[
+    {id:'q1',text:'What should you do if you find a blocked emergency exit?',options:['Ignore it if the office is quiet','Report it and follow the procedure to clear the hazard safely','Put boxes in front of it','Wait for an inspection'],correctIndex:1},
+    {id:'q2',text:'Should a near miss be reported?',options:['Only if equipment is destroyed','Never','Yes, promptly using the workplace process','Only at year end'],correctIndex:2},
+    {id:'q3',text:'What is the safest response to a task you are not trained to do?',options:['Attempt it quickly','Copy a colleague without asking','Disable safety equipment','Stop and seek appropriate guidance'],correctIndex:3}
+  ]}
+];
+
+function Training({state,update,setModal,showToast}){
+  const [tab,setTab]=useState('catalog');
+  const [externalResults,setExternalResults]=useState([]);
+  const [externalLoading,setExternalLoading]=useState(false);
+  const [externalError,setExternalError]=useState('');
+  useEffect(()=>{
+    if(tab!=='external') return;
+    let active=true;
+    setExternalLoading(true); setExternalError('');
+    api('/api/training/external-results').then(data=>{ if(active) setExternalResults(data.results||[]); }).catch(err=>{ if(active) setExternalError(err.message||'Could not load external training results.'); }).finally(()=>{ if(active) setExternalLoading(false); });
+    return ()=>{ active=false; };
+  },[tab]);
+  async function createExternalAccess(training){
+    const rawLimit=window.prompt('Maximum external trainees for '+training.title+'? Leave blank for unlimited.','');
+    if(rawLimit===null) return;
+    const body={trainingId:training.id,seatLimit:null};
+    if(rawLimit.trim()){
+      const seatLimit=Number(rawLimit);
+      if(!Number.isInteger(seatLimit)||seatLimit<1){ alert('Enter a whole number of at least 1, or leave the limit blank.'); return; }
+      body.seatLimit=seatLimit;
+    }
+    try{
+      const data=await api('/api/training/access',{method:'POST',body});
+      const url=window.location.origin+'/training-access?code='+encodeURIComponent(data.access.code);
+      const message='External training link for '+training.title+':\\n'+url+'\\nAccess code: '+data.access.code+'\\nShare this link and code with trainees.';
+      try{ await navigator.clipboard.writeText(url); alert(message+'\\n\\nLink copied to clipboard.'); }
+      catch{ alert(message); }
+    }catch(err){ showToast(err.message||'Could not create external training access.'); }
+  }
+  const isEmployee=state.currentRole==='employee';
+  const canManageTraining=state.currentRole==='owner'||state.currentRole==='admin';
+  const myId=state.viewingEmployeeId||state.employees[0]?.id;
+  // force trainings to exist — if corrupted localStorage, seed robust 6
+  if(!state.trainings || state.trainings.length===0){
+    return <div style={{padding:20,textAlign:'center'}}><div style={{color:'#8C3B28'}}>Courses not loaded — local data corrupted.</div><button className="btn btn-primary" style={{marginTop:10}} onClick={()=>{ if(confirm('Reload 6 robust courses?')){ const fresh=seedDemo(); update(s=>{ s.trainings=fresh.trainings; s.enrollments=fresh.enrollments; s.certificates=fresh.certificates; }); showToast('Courses restored'); } }}>Reload 6 Courses</button><button className="btn" style={{marginLeft:8, marginTop:10}} onClick={()=>{ localStorage.clear(); location.reload(); }}>Hard Reset</button></div>;
+  }
+  const visibleEnrollments=isEmployee? state.enrollments.filter(e=>e.employeeId===myId) : state.enrollments;
+  const visibleCerts=isEmployee? state.certificates.filter(c=>c.employeeId===myId) : state.certificates;
+  const enrolledCount=visibleEnrollments.length;
+  const completedCount=visibleEnrollments.filter(e=>e.progress===100).length;
+  const pendingCount=enrolledCount-completedCount;
+  const certCount=visibleCerts.length;
+  return (<>
+    <div className="panel-head"><div><h2>Training Suite</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>{isEmployee? 'Your courses — learn offline, get certified' : 'Courses + Assignments + Progress + Certificates — offline & printable'}</p></div>
+      {!isEmployee && <div style={{display:'flex',gap:8}}><button className="btn btn-primary" onClick={()=>setModal({type:'courseBuilder'})}>+ Course builder</button><button className="btn" onClick={()=>setModal({type:'course'})}>+ Quick course</button><button className="btn" style={{background:'#fff',color:'#201526'}} onClick={()=>setModal({type:'enroll'})}>+ Enroll staff</button></div>}
+      {isEmployee && <div style={{fontSize:11,color:'var(--muted)',background:'rgba(237,238,242,0.08)',padding:'6px 10px',borderRadius:20}}>Employee view — contact HR to enroll</div>}
+    </div>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:12,marginBottom:14}}>
+      <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:12}}><div style={{fontSize:10,color:'var(--muted)',textTransform:'uppercase'}}>Courses</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{state.trainings.length}</div></div>
+      <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:12}}><div style={{fontSize:10,color:'var(--muted)',textTransform:'uppercase'}}>Enrolled</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{enrolledCount}</div></div>
+      <div style={{background:'var(--teal)',borderRadius:8,padding:12,color:'#fff'}}><div style={{fontSize:10,textTransform:'uppercase',opacity:0.85}}>Completed</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{completedCount}</div></div>
+      <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:12}}><div style={{fontSize:10,color:'var(--muted)',textTransform:'uppercase'}}>Pending</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{pendingCount}</div></div>
+      <div style={{background:'var(--paper)',color:'#201526',borderRadius:8,padding:12}}><div style={{fontSize:10,opacity:0.55,textTransform:'uppercase'}}>Certificates</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{certCount}</div></div>
+    </div>
+    <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
+      {['catalog','library','enrollments','certificates',...(canManageTraining?['external']:[])].map(t=> <button key={t} onClick={()=>setTab(t)} style={{padding:'6px 12px',borderRadius:20,fontSize:12,border:'1px solid var(--line)',background:tab===t?'var(--paper)':'transparent',color:tab===t?'#201526':'var(--muted)',cursor:'pointer',textTransform:'capitalize'}}>{t}</button>)}
+    </div>
+
+    {tab==='external' && canManageTraining && <div className="card" style={{gap:10}}>
+      <div style={{fontWeight:700,fontSize:15}}>External trainee results</div>
+      <div style={{fontSize:12,color:'var(--muted)'}}>Results are limited to access codes created by your company. External trainees do not receive employee account access.</div>
+      {externalLoading && <p style={{fontSize:12}}>Loading results…</p>}
+      {externalError && <p style={{fontSize:12,color:'#B23A2E'}}>{externalError}</p>}
+      {!externalLoading && !externalError && externalResults.length===0 && <p style={{fontSize:12,color:'var(--muted)'}}>No external exam submissions yet. Open Catalog and create an external access link for a course.</p>}
+      {externalResults.length>0 && <div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+        <thead><tr>{['Trainee','Email','Course','Score','Result','Attempt','Submitted'].map(h=><th key={h} style={{textAlign:'left',padding:'8px 6px',borderBottom:'1px solid var(--line)'}}>{h}</th>)}</tr></thead>
+        <tbody>{externalResults.map(row=><tr key={row.id}><td style={{padding:'8px 6px',borderBottom:'1px solid var(--line)'}}>{row.traineeName}</td><td style={{padding:'8px 6px',borderBottom:'1px solid var(--line)'}}>{row.email}</td><td style={{padding:'8px 6px',borderBottom:'1px solid var(--line)'}}>{row.courseTitle}</td><td style={{padding:'8px 6px',borderBottom:'1px solid var(--line)'}}>{row.percent}% ({row.score}/{row.total})</td><td style={{padding:'8px 6px',borderBottom:'1px solid var(--line)',color:row.passed?'#28765e':'#B23A2E'}}>{row.passed?'Passed':'Not passed'}</td><td style={{padding:'8px 6px',borderBottom:'1px solid var(--line)'}}>{row.attempt}</td><td style={{padding:'8px 6px',borderBottom:'1px solid var(--line)'}}>{new Date(row.submittedAt).toLocaleString()}</td></tr>)}</tbody>
+      </table></div>}
+    </div>}
+    {tab==='library' && <div style={{display:'grid',gap:12}}>
+      <div className="card" style={{gap:6}}>
+        <div style={{fontWeight:700,fontSize:15}}>Reusable course library</div>
+        <div style={{fontSize:12,color:'var(--muted)',lineHeight:1.5}}>Choose a starter course and add a copy to your company catalogue. Each company keeps its own course record; employee progress and results are never shared across companies. Check the content against your local laws and company policies before assigning it.</div>
+      </div>
+      {libraryTemplates.map(template=>{
+        const alreadyAdded=state.trainings.some(course=>course.libraryKey===template.key);
+        return <div key={template.key} className="card" style={{gap:10}}>
+          <div style={{display:'flex',justifyContent:'space-between',gap:10,alignItems:'flex-start',flexWrap:'wrap'}}>
+            <div style={{flex:1,minWidth:200}}><div style={{fontSize:10,background:'var(--bg-2)',border:'1px solid var(--line)',display:'inline-block',padding:'3px 7px',borderRadius:20,marginBottom:7}}>{template.category} · Starter course</div><div style={{fontWeight:700,fontSize:15}}>{template.title}</div><div style={{fontSize:12,color:'var(--muted)',lineHeight:1.5,marginTop:5}}>{template.description}</div></div>
+            <div style={{fontSize:11,color:'var(--muted)'}}>{template.duration} · {template.questions.length} exam questions</div>
+          </div>
+          <details><summary style={{cursor:'pointer',fontSize:12,fontWeight:600}}>Preview study material and exam topics</summary><div style={{whiteSpace:'pre-wrap',fontSize:12,lineHeight:1.6,marginTop:8}}>{template.materials}</div><ul style={{fontSize:12,lineHeight:1.6}}>{template.questions.map((q,i)=><li key={i}>{q.text}</li>)}</ul></details>
+          {canManageTraining && <button className="btn btn-primary" disabled={alreadyAdded} onClick={()=>{
+            const course={...template,id:'course-'+Math.random().toString(36).slice(2,10),createdAt:new Date().toISOString().slice(0,10),required:false,libraryKey:template.key,questions:template.questions.map(q=>({...q,id:'question-'+Math.random().toString(36).slice(2,9)})),modules:[{id:'module-'+Math.random().toString(36).slice(2,8),title:'Study material',type:'doc',content:template.materials,duration:'30m'},{id:'quiz-'+Math.random().toString(36).slice(2,8),title:'Final assessment',type:'quiz',content:template.questions.length+' questions · '+template.passPercent+'% pass mark',duration:'20m'}]};
+            update(state=>{state.trainings.push(course);});showToast('Starter course added to your company catalogue');
+          }}>{alreadyAdded?'Already added':'Add to my courses'}</button>}
+        </div>;
+      })}
+    </div>}
+    {tab==='catalog' && <div className="grid">
+      {state.trainings.map(tr=>{
+        const enrolled=state.enrollments.filter(e=>e.trainingId===tr.id).length;
+        const myEnroll=state.enrollments.find(e=>e.trainingId===tr.id && e.employeeId===myId);
+        const hasQuiz=tr.modules.some(m=>m.type==='quiz');
+        return <div key={tr.id} className="card" style={{gap:10}}>
+          <div style={{display:'flex',justifyContent:'space-between'}}><span style={{fontSize:10,background:tr.required?'#E2735B':'#E0E2E8',color:tr.required?'#fff':'#201526',padding:'3px 7px',borderRadius:20}}>{tr.category} {tr.required?'· Required':''}</span><span style={{fontSize:11,opacity:0.55}}>{tr.duration}</span></div>
+          <div style={{fontWeight:700,fontSize:15}}>{tr.title}</div><div style={{fontSize:12,opacity:0.7,lineHeight:1.4}}>{tr.description}</div>
+          <div style={{fontSize:11,opacity:0.65}}>{tr.modules.length} modules: {tr.modules.map(m=>m.title).join(' · ')}</div>
+          <div style={{display:'flex',gap:6,marginTop:4,flexWrap:'wrap'}}>
+            <button onClick={()=>setModal({type:'courseView', data:tr.id})} style={{background:'#fff',border:'1px solid #ddd',borderRadius:5,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>View & Take Test{hasQuiz?' 📝':''}</button>
+            {canManageTraining && <button onClick={()=>createExternalAccess(tr)} style={{background:'#286c62',color:'#fff',border:'none',borderRadius:5,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>Share external access</button>}
+            {isEmployee ? (
+              myEnroll? <span style={{fontSize:11,background:myEnroll.progress===100?'#4C8577':'#E2735B',color:'#fff',padding:'6px 10px',borderRadius:5}}>{myEnroll.progress===100?'Completed ✓':`${myEnroll.progress}% — Enrolled`}</span>
+              : <button onClick={()=>{ update(s=>{ s.enrollments.push({id:uid(), employeeId:myId, trainingId:tr.id, progress:0, completedModules:[], enrolledAt:new Date().toISOString().slice(0,10), completedAt:null, score:null, certificateId:null}); }); showToast('Enrolled — open View & Take Test to start'); }} style={{background:'var(--teal)',color:'#fff',border:'none',borderRadius:5,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>Enroll me</button>
+            ) : (
+              <>
+                <button onClick={()=>setModal({type:'enroll', preset:tr.id})} style={{background:'var(--teal)',color:'#fff',border:'none',borderRadius:5,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>Enroll staff ({enrolled})</button>
+                <button onClick={()=>{ const uid2=uid(); update(s=>{ let my=s.enrollments.find(e=>e.employeeId===myId && e.trainingId===tr.id); if(!my){ my={id:uid2, employeeId:myId, trainingId:tr.id, progress:0, completedModules:[], enrolledAt:new Date().toISOString().slice(0,10), completedAt:null, score:null, certificateId:null}; s.enrollments.push(my); } }); setModal({type:'courseView', data:tr.id}); }} style={{background:'#201526',color:'#fff',border:'none',borderRadius:5,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>Take as HR</button>
+                <button onClick={()=>setModal({type:'editCourse', data:tr.id})} style={{background:'#E0E2E8',border:'none',borderRadius:5,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>Edit</button>
+                <button onClick={()=>{ if(confirm('Delete course?')) update(s=>{ s.trainings=s.trainings.filter(x=>x.id!==tr.id); s.enrollments=s.enrollments.filter(e=>e.trainingId!==tr.id); }); }} style={{background:'transparent',border:'1px solid rgba(226,115,91,0.4)',color:'#8C3B28',borderRadius:5,padding:'6px 10px',fontSize:11,cursor:'pointer'}}>Remove</button>
+              </>
+            )}
+          </div>
+        </div>;
+      })}
+      {state.trainings.length===0 && <div style={{color:'var(--muted)',padding:20}}>No courses yet — create your first.</div>}
+    </div>}
+
+    {tab==='enrollments' && <div style={{background:'#EDEEF2',borderRadius:8,padding:8}}>
+      {visibleEnrollments.length===0? <div style={{color:'rgba(32,21,38,0.6)',textAlign:'center',padding:24}}>{isEmployee?'Not enrolled yet — join a course from Catalog':'No enrollments yet.'}</div> :
+      <table style={{width:'100%',borderCollapse:'collapse',color:'#201526',fontSize:12}}>
+        <thead><tr style={{background:'#E0E2E8'}}><th style={{textAlign:'left',padding:'8px'}}>Staff</th><th style={{textAlign:'left',padding:'8px'}}>Course</th><th style={{textAlign:'center',padding:'8px'}}>Progress</th><th style={{textAlign:'center',padding:'8px'}}>Score</th><th style={{textAlign:'left',padding:'8px'}}>Action</th></tr></thead>
+        <tbody>{visibleEnrollments.map(en=>{
+          const emp=state.employees.find(e=>e.id===en.employeeId);
+          const tr=state.trainings.find(t=>t.id===en.trainingId);
+          return <tr key={en.id} style={{borderBottom:'1px solid rgba(32,21,38,0.07)'}}>
+            <td style={{padding:'8px',fontWeight:600}}>{emp?emp.name:'—'}</td>
+            <td style={{padding:'8px'}}>{tr?tr.title:'—'}</td>
+            <td style={{padding:'8px'}}>
+              <div style={{display:'flex',alignItems:'center',gap:6}}><div style={{flex:1,height:6,background:'rgba(32,21,38,0.1)',borderRadius:6,overflow:'hidden'}}><div style={{width:`${en.progress}%`,height:'100%',background:en.progress===100?'#4C8577':'#E2735B'}}/></div><span style={{fontFamily:'monospace',fontSize:11}}>{en.progress}%</span></div>
+              <div style={{fontSize:10,opacity:0.55}}>{en.completedModules.length}/{tr?.modules.length||0} modules</div>
+            </td>
+            <td style={{textAlign:'center',padding:'8px',fontFamily:'monospace'}}>{en.score ?? '—'}{en.score!==null?'%':''}</td>
+            <td style={{padding:'8px',display:'flex',gap:6,flexWrap:'wrap'}}>
+              {en.progress<100 && <button onClick={()=>{
+                const tr2=state.trainings.find(t=>t.id===en.trainingId);
+                const next=tr2.modules.find(m=>!en.completedModules.includes(m.id));
+                if(!next) return;
+                const score=next.type==='quiz'? Math.floor(70+Math.random()*30) : null;
+                update(s=>{
+                  const e=s.enrollments.find(x=>x.id===en.id);
+                  e.completedModules.push(next.id);
+                  e.progress=Math.round(100*e.completedModules.length/tr2.modules.length);
+                  if(score!==null) e.score=score;
+                  if(e.progress===100){ e.completedAt=new Date().toISOString().slice(0,10); const certId=uid(); e.certificateId=certId; s.certificates.push({id:certId, employeeId:e.employeeId, trainingId:e.trainingId, issuedAt:e.completedAt, score:e.score}); }
+                });
+                showToast(next.title+' completed');
+              }} style={{fontSize:11,background:'#201526',color:'#fff',border:'none',padding:'5px 8px',borderRadius:5,cursor:'pointer'}}>Complete next</button>}
+              {en.progress===100 && <button onClick={()=>{ const cert=state.certificates.find(c=>c.id===en.certificateId); const emp2=state.employees.find(e=>e.id===en.employeeId); const tr2=state.trainings.find(t=>t.id===en.trainingId); if(cert&&emp2&&tr2) printCertificate({companyName:state.companyName, cert, employee:emp2, training:tr2}); }} style={{fontSize:11,background:'#4C8577',color:'#fff',border:'none',padding:'5px 8px',borderRadius:5,cursor:'pointer'}}>Certificate</button>}
+              {!isEmployee && <button onClick={()=>{ if(confirm('Unenroll?')) update(s=>{ s.enrollments=s.enrollments.filter(x=>x.id!==en.id); s.certificates=s.certificates.filter(c=>c.id!==en.certificateId); }); }} style={{fontSize:11,background:'transparent',border:'1px solid rgba(226,115,91,0.4)',color:'#8C3B28',padding:'5px 8px',borderRadius:5,cursor:'pointer'}}>Remove</button>}
+              {isEmployee && en.employeeId===myId && en.progress<100 && <span style={{fontSize:10,opacity:0.55}}>HR unenrolls</span>}
+            </td>
+          </tr>;
+        })}</tbody>
+      </table>}
+    </div>}
+
+    {tab==='certificates' && <div className="grid">
+      {visibleCerts.map(c=>{
+        const emp=state.employees.find(e=>e.id===c.employeeId);
+        const tr=state.trainings.find(t=>t.id===c.trainingId);
+        return <div key={c.id} style={{background:'#fff',color:'#201526',borderRadius:8,padding:16,border:'2px solid #EDEEF2'}}>
+          <div style={{fontSize:10,letterSpacing:0.1+'em',textTransform:'uppercase',opacity:0.55}}>{state.companyName||'Company'} · Certificate</div>
+          <div style={{fontFamily:'Newsreader',fontStyle:'italic',fontSize:16,fontWeight:700,marginTop:4}}>{tr?tr.title:'Course'}</div>
+          <div style={{fontSize:13,marginTop:6}}>Awarded to <b>{emp?emp.name:'—'}</b> · {emp?emp.role:''}</div>
+          <div style={{fontSize:11,opacity:0.6,marginTop:4}}>Issued {formatDate(c.issuedAt)} · ID {c.id.slice(0,8).toUpperCase()} · Score {c.score||'—'}%</div>
+          <button onClick={()=>printCertificate({companyName:state.companyName, cert:c, employee:emp, training:tr})} style={{marginTop:10,background:'#201526',color:'#fff',border:'none',padding:'7px 12px',borderRadius:6,fontSize:12,cursor:'pointer'}}>Print / Save PDF</button>
+        </div>;
+      })}
+      {visibleCerts.length===0 && <div style={{color:'var(--muted)',padding:20}}>{isEmployee?'Complete a course to earn your certificate':'No certificates yet — complete a training to generate.'}</div>}
+    </div>}
+  </>);
+}
+function Leave({state,update,setModal,showToast}){
+  const isEmployee=state.currentRole==='employee';
+  const myId=state.viewingEmployeeId||state.employees[0]?.id;
+  const leaves=isEmployee? state.leaves.filter(l=>l.employeeId===myId) : state.leaves;
+  function balance(empId, type){
+    const taken=state.leaves.filter(l=>l.employeeId===empId && l.type===type && l.status==='approved').reduce((s,l)=>s+l.days,0);
+    const quota=LEAVE_TYPES.find(t=>t.key===type).days;
+    return quota - taken;
+  }
+  return (<>
+    <div className="panel-head"><div><h2>Leave Management</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>{isEmployee?'Your leave requests & balances':'Team leave — request, approve, track balances'}</p></div><button className="btn btn-primary" onClick={()=>setModal({type:'leave'})}>+ Request leave</button></div>
+    <p style={{fontSize:11.5,color:'var(--muted)',lineHeight:1.6,marginTop:-8}}>Leave-day amounts shown are sample company-policy defaults, not statutory entitlements. Policy customization is not yet available in the app; confirm local requirements with HR/legal advice for the selected jurisdiction.</p>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginBottom:14}}>
+      {LEAVE_TYPES.map(t=>{
+        const bal=isEmployee? balance(myId,t.key) : null;
+        return <div key={t.key} style={{background:'var(--bg-2)',borderLeft:`4px solid ${t.color}`,borderRadius:8,padding:12}}>
+          <div style={{fontSize:11,fontWeight:600}}>{t.label}</div><div style={{fontSize:11,opacity:0.6}}>{t.days} days/year</div>{isEmployee && <div style={{fontFamily:'IBM Plex Mono',fontSize:13,marginTop:4, color: bal<5?'#E2735B':'#fff'}}>Remaining: {bal}d</div>}
+        </div>;
+      })}
+    </div>
+    {!isEmployee && <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:10,marginBottom:12}}>
+      {state.employees.filter(e=>e.active).map(e=>(
+        <div key={e.id} style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:10}}>
+          <div style={{fontSize:12,fontWeight:700}}>{e.name}</div><div style={{fontSize:10,opacity:0.6}}>{LEAVE_TYPES.map(t=> `${t.label.split(' ')[0]}:${balance(e.id,t.key)}d`).join(' · ')}</div>
+        </div>
+      ))}
+    </div>}
+    <div style={{background:'#EDEEF2',borderRadius:8,overflow:'hidden'}}>
+      <table style={{width:'100%',borderCollapse:'collapse',color:'#201526',fontSize:12}}>
+        <thead><tr style={{background:'#E0E2E8'}}><th style={{textAlign:'left',padding:'8px'}}>Staff</th><th style={{padding:'8px'}}>Type</th><th style={{padding:'8px'}}>Dates</th><th style={{padding:'8px'}}>Days</th><th style={{padding:'8px'}}>Status</th><th style={{padding:'8px'}}>Action</th></tr></thead>
+        <tbody>{leaves.length===0? <tr><td colSpan={6} style={{textAlign:'center',padding:20,opacity:0.6}}>No leave requests</td></tr> :
+          leaves.slice().reverse().map(l=>{
+            const emp=state.employees.find(e=>e.id===l.employeeId);
+            const lt=LEAVE_TYPES.find(t=>t.key===l.type);
+            return <tr key={l.id} style={{borderBottom:'1px solid rgba(32,21,38,0.08)'}}><td style={{padding:'8px',fontWeight:600}}>{emp?emp.name:'—'}</td><td style={{padding:'8px'}}><span style={{background:lt.color,color:'#fff',padding:'3px 7px',borderRadius:10,fontSize:11}}>{lt.label}</span></td><td style={{padding:'8px',fontFamily:'monospace'}}>{l.from} → {l.to}</td><td style={{padding:'8px',textAlign:'center'}}>{l.days}</td><td style={{padding:'8px'}}><span style={{padding:'3px 7px',borderRadius:10,fontSize:11,background:l.status==='approved'?'#4C8577':l.status==='rejected'?'#E2735B':'#C9A227',color:'#fff'}}>{l.status}</span></td><td style={{padding:'8px',display:'flex',gap:6}}>
+              {!isEmployee && l.status==='pending' && <><button onClick={()=>update(s=>{ s.leaves.find(x=>x.id===l.id).status='approved'; })} style={{background:'#4C8577',color:'#fff',border:'none',padding:'4px 8px',borderRadius:5,fontSize:11,cursor:'pointer'}}>Approve</button><button onClick={()=>update(s=>{ s.leaves.find(x=>x.id===l.id).status='rejected'; })} style={{background:'#E2735B',color:'#fff',border:'none',padding:'4px 8px',borderRadius:5,fontSize:11,cursor:'pointer'}}>Reject</button></>}
+              {(isEmployee|| l.employeeId===myId) && l.status==='pending' && <button onClick={()=>{ if(confirm('Cancel request?')) update(s=> s.leaves=s.leaves.filter(x=>x.id!==l.id));}} style={{background:'transparent',border:'1px solid rgba(32,21,38,0.2)',padding:'4px 8px',borderRadius:5,fontSize:11,cursor:'pointer'}}>Cancel</button>}
+            </td></tr>;
+          })}
+        </tbody>
+      </table>
+    </div>
+  </>);
+}
+function Attendance({state,update,setModal,showToast}){
+  const isEmployee=state.currentRole==='employee';
+  const myId=state.viewingEmployeeId||state.employees[0]?.id;
+  const todayStr=new Date().toISOString().slice(0,10);
+  const todayRec=state.attendance.find(a=>a.employeeId===myId && a.date===todayStr);
+  const list=isEmployee? state.attendance.filter(a=>a.employeeId===myId) : state.attendance;
+  function clock(type){
+    const now=new Date(); const hh=String(now.getHours()).padStart(2,'0'); const mm=String(now.getMinutes()).padStart(2,'0');
+    const time=`${hh}:${mm}`;
+    update(s=>{
+      let rec=s.attendance.find(a=>a.employeeId===myId && a.date===todayStr);
+      if(!rec){ rec={id:uid(), employeeId:myId, date:todayStr, clockIn:null, clockOut:null, status:'present'}; s.attendance.push(rec); }
+      if(type==='in'){ if(rec.clockIn) return; rec.clockIn=time; const late = hh>='09' && !(hh==='08' && mm<='30') ? true : parseInt(hh)>8; if(late && !rec.status.includes('late')) rec.status='late'; }
+      if(type==='out'){ if(!rec.clockIn){ showToast('Clock in first'); return; } rec.clockOut=time; }
+    });
+  }
+  const presentToday=state.attendance.filter(a=>a.date===todayStr && a.status!=='absent').length;
+  return (<>
+    <div className="panel-head"><div><h2>Time & Attendance</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Clock in/out, late & absent tracking — offline</p></div>
+      <div style={{display:'flex',gap:8}}><button className="btn btn-primary" onClick={()=>clock('in')} disabled={!!todayRec?.clockIn} style={{opacity: todayRec?.clockIn?0.5:1}}>Clock In {todayRec?.clockIn||''}</button><button className="btn" style={{background:'#EDEEF2',color:'#201526',opacity: todayRec?.clockOut?0.5:1}} onClick={()=>clock('out')} disabled={!!todayRec?.clockOut}>Clock Out {todayRec?.clockOut||''}</button><button className="btn" style={{background:'transparent',border:'1px solid var(--line)',color:'var(--muted)'}} onClick={()=>setModal({type:'attendance'})}>+ Manual entry</button></div>
+    </div>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:10,marginBottom:12}}>
+      <div style={{background:'var(--bg-2)',borderRadius:8,padding:12,border:'1px solid var(--line)'}}><div style={{fontSize:10,color:'var(--muted)',textTransform:'uppercase'}}>Today present</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{presentToday}/{state.employees.filter(e=>e.active).length}</div><div style={{fontSize:11,opacity:0.6}}>{todayStr}</div></div>
+      <div style={{background: todayRec?.status==='late'?'#C9A227':'#4C8577',color:'#fff',borderRadius:8,padding:12}}><div style={{fontSize:10,textTransform:'uppercase',opacity:0.9}}>My status today</div><div style={{fontWeight:700,marginTop:4}}>{todayRec? (todayRec.clockIn? (todayRec.status + ' · '+todayRec.clockIn+(todayRec.clockOut?' → '+todayRec.clockOut:'')) : 'Not clocked') : 'Not clocked'}</div></div>
+    </div>
+    <div style={{background:'#EDEEF2',borderRadius:8,overflow:'auto',maxHeight:380}}>
+      <table style={{width:'100%',borderCollapse:'collapse',color:'#201526',fontSize:12, minWidth:600}}>
+        <thead><tr style={{background:'#E0E2E8',position:'sticky',top:0}}><th style={{textAlign:'left',padding:'8px'}}>Date</th><th style={{textAlign:'left',padding:'8px'}}>Staff</th><th style={{padding:'8px'}}>Clock In</th><th style={{padding:'8px'}}>Clock Out</th><th style={{padding:'8px'}}>Status</th><th style={{padding:'8px'}}>Hours</th></tr></thead>
+        <tbody>{list.slice().sort((a,b)=> b.date.localeCompare(a.date)).slice(0,60).map(a=>{
+          const emp=state.employees.find(e=>e.id===a.employeeId);
+          const hours=a.clockIn && a.clockOut ? ((parseInt(a.clockOut.split(':')[0])*60+parseInt(a.clockOut.split(':')[1]) - (parseInt(a.clockIn.split(':')[0])*60+parseInt(a.clockIn.split(':')[1])))/60).toFixed(1)+'h' : '—';
+          return <tr key={a.id} style={{borderBottom:'1px solid rgba(32,21,38,0.07)'}}><td style={{padding:'8px',fontFamily:'monospace'}}>{a.date}</td><td style={{padding:'8px',fontWeight:600}}>{emp?emp.name:'—'}</td><td style={{padding:'8px',textAlign:'center'}}>{a.clockIn||'—'}</td><td style={{padding:'8px',textAlign:'center'}}>{a.clockOut||'—'}</td><td style={{padding:'8px'}}><span style={{padding:'3px 7px',borderRadius:10,fontSize:11, background: a.status==='present'?'#4C8577':a.status==='late'?'#C9A227':'#E2735B', color:'#fff'}}>{a.status}</span></td><td style={{padding:'8px',textAlign:'center',fontFamily:'monospace'}}>{hours}</td></tr>;
+        })}</tbody>
+      </table>
+    </div>
+  </>);
+}
+function Org({state,update,setModal,showToast}){
+  return (<>
+    <div className="panel-head"><div><h2>Org Management</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Departments, reporting lines, heads — drag staff between units</p></div>
+      <div style={{display:'flex',gap:8}}><button className="btn btn-primary" onClick={()=>setModal({type:'orgUnit'})}>+ New department</button><button className="btn" style={{background:'#fff',color:'#201526'}} onClick={()=>setModal({type:'assignDept'})}>Assign staff</button></div>
+    </div>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:14}}>
+      {state.orgUnits.map(dept=>{
+        const head=state.employees.find(e=>e.id===dept.head);
+        const members=state.employees.filter(e=>e.department===dept.id);
+        return <div key={dept.id} style={{background:'#EDEEF2',color:'#201526',borderRadius:8,padding:16,borderLeft:`6px solid ${dept.color}`}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h3 style={{fontWeight:700}}>{dept.name}</h3><span style={{fontSize:11,background:dept.color,color:'#fff',padding:'3px 7px',borderRadius:10}}>{members.length} staff</span></div>
+          <div style={{fontSize:12,opacity:0.6,marginTop:4}}>Head: {head?head.name:'— Vacant'} · <a onClick={()=>setModal({type:'orgUnit', data:dept.id})} style={{color:'#4C8577',cursor:'pointer',textDecoration:'underline'}}>Edit</a></div>
+          <div style={{marginTop:10, display:'flex',flexDirection:'column',gap:6}}>
+            {members.map(m=> <div key={m.id} style={{display:'flex',alignItems:'center',gap:8,background:'#fff',padding:'8px 10px',borderRadius:6,fontSize:12}}>
+              <div style={{width:28,height:28,borderRadius:'50%',overflow:'hidden',background:m.color,display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:11}}>{m.passportPhoto? <img src={m.passportPhoto} alt='' style={{width:'100%',height:'100%',objectFit:'cover'}}/> : initials(m.name)}</div>
+              <div style={{flex:1}}><div style={{fontWeight:600}}>{m.name}</div><div style={{fontSize:10,opacity:0.6}}>{m.role}</div></div>
+              <select value={m.department} onChange={e=>update(s=>{ s.employees.find(x=>x.id===m.id).department=e.target.value; })} style={{fontSize:11,padding:4,borderRadius:4,border:'1px solid #ddd',background:'#fff'}}>
+                {state.orgUnits.map(d=> <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            </div>)}
+            {members.length===0 && <div style={{fontSize:12,opacity:0.5,padding:8}}>No staff in this unit.</div>}
+          </div>
+          <button onClick={()=>{ if(confirm('Delete department? Staff will move to first unit.')) update(s=>{ const fallback=s.orgUnits.find(u=>u.id!==dept.id)?.id; s.employees.filter(e=>e.department===dept.id).forEach(e=> e.department=fallback); s.orgUnits=s.orgUnits.filter(u=>u.id!==dept.id); }); }} style={{marginTop:10,background:'transparent',border:'1px solid rgba(226,115,91,0.4)',color:'#8C3B28',padding:'5px 10px',borderRadius:5,fontSize:11,cursor:'pointer'}}>Delete unit</button>
+        </div>;
+      })}
+    </div>
+    <div style={{marginTop:14,background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:12}}>
+      <div style={{fontSize:11,opacity:0.7}}>Org chart is offline — head, units and assignments saved locally. Use Assign staff to bulk move.</div>
+    </div>
+  </>);
+}
+function ManualPayroll({state,update,showToast}){
+  const active=state.employees.filter(e=>e.active);
+  const [period,setPeriod]=useState(nextPeriod(state.runs));
+  const [rows,setRows]=useState(()=>active.map(e=>({employeeId:e.id,gross:String(e.gross??''),monthlyPAYE:'',pensionEmployee:'',pensionEmployer:'',nhf:'',nsitf:'',otherDeductions:'',net:'',notes:''})));
+  const [fileName,setFileName]=useState('');
+  const [saving,setSaving]=useState(false);
+  const [csvError,setCsvError]=useState('');
+  useEffect(()=>{if(!rows.length&&active.length)setRows(active.map(e=>({employeeId:e.id,gross:String(e.gross??''),monthlyPAYE:'',pensionEmployee:'',pensionEmployer:'',nhf:'',nsitf:'',otherDeductions:'',net:'',notes:''})));},[active.length,rows.length]);
+  function updateRow(index,key,value){ setRows(old=>old.map((row,i)=>i===index?{...row,[key]:value}:row)); }
+  function parseCsv(text){
+    const records=[]; let row=[],cell='',quoted=false;
+    for(let i=0;i<text.length;i++){
+      const ch=text[i];
+      if(ch==='"' && quoted && text[i+1]==='"'){cell+='"';i++;}
+      else if(ch==='"') quoted=!quoted;
+      else if(ch===','&&!quoted){row.push(cell.trim());cell='';}
+      else if((ch==='\n'||ch==='\r')&&!quoted){if(ch==='\r'&&text[i+1]==='\n')i++;row.push(cell.trim());if(row.some(v=>v!==''))records.push(row);row=[];cell='';}
+      else cell+=ch;
+    }
+    row.push(cell.trim());if(row.some(v=>v!==''))records.push(row);
+    if(records.length<2) throw new Error('CSV needs a header row and at least one payroll row.');
+    const headers=records[0].map(h=>h.toLowerCase().replace(/[\s_-]+/g,''));
+    const index=(...names)=>headers.findIndex(h=>names.includes(h));
+    const employeeIndex=index('employeeid','id','employee','employeename','name');
+    const fields=['gross','monthlyPAYE','pensionEmployee','pensionEmployer','nhf','nsitf','otherDeductions','net','notes'];
+    const mapped=records.slice(1).map(cells=>{
+      const raw=employeeIndex>=0?(cells[employeeIndex]||''):'';
+      const emp=active.find(e=>String(e.id)===raw || String(e.name||'').toLowerCase()===raw.toLowerCase());
+      if(!emp) throw new Error('Could not match employee "'+raw+'". Use an exact employee name or employee ID.');
+      const out={employeeId:emp.id};
+      fields.forEach(field=>{
+        const aliases={monthlyPAYE:['monthlypaye','paye','tax'],pensionEmployee:['pensionemployee','employeecontribution'],pensionEmployer:['pensionemployer','employercontribution'],otherDeductions:['otherdeductions','other'],gross:['gross','grosspay'],net:['net','netpay'],notes:['notes','note'],nhf:['nhf'],nsitf:['nsitf']};
+        const idx=index(...aliases[field]);
+        out[field]=idx>=0?(cells[idx]||''):'';
+      });
+      if(!out.gross) throw new Error('Gross pay is missing for '+emp.name+'.');
+      return out;
+    });
+    if(mapped.some((r,i)=>mapped.findIndex(x=>x.employeeId===r.employeeId)!==i)) throw new Error('CSV contains duplicate rows for an employee.');
+    return mapped;
+  }
+  async function importFile(file){
+    if(!file) return;
+    setCsvError('');
+    if(!/\.csv$/i.test(file.name)){setCsvError('Please upload a CSV file. Save Excel workbooks as CSV UTF-8 first.');return;}
+    try{
+      const parsed=parseCsv(await file.text());
+      setRows(parsed);setFileName(file.name);
+      showToast('Imported '+parsed.length+' payroll rows. Review all amounts before saving.');
+    }catch(err){setCsvError(err.message||'Could not read this CSV file.');}
+  }
+  async function saveManual(){
+    if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)){showToast('Enter the period as YYYY-MM.');return;}
+    if(!rows.length){showToast('Add at least one payroll row.');return;}
+    const seen=new Set();
+    for(const row of rows){
+      if(!row.employeeId||seen.has(row.employeeId)){showToast('Each employee must appear once. Check the imported rows.');return;}
+      seen.add(row.employeeId);
+      if(row.gross===''||!Number.isFinite(Number(row.gross))||Number(row.gross)<0){showToast('Enter a valid non-negative gross amount for every row.');return;}
+      for(const key of ['monthlyPAYE','pensionEmployee','pensionEmployer','nhf','nsitf','otherDeductions','net']){
+        if(row[key]!==''&&(!Number.isFinite(Number(row[key]))||Number(row[key])<0)){showToast('Payroll amounts must be non-negative numbers.');return;}
+      }
+    }
+    if(state.runs.some(r=>r.period===period)){showToast('A payroll run already exists for this period. Choose another period or review History.');return;}
+    setSaving(true);
+    const payload={period,lines:rows.map(r=>({...r,gross:Number(r.gross),monthlyPAYE:Number(r.monthlyPAYE||0),pensionEmployee:Number(r.pensionEmployee||0),pensionEmployer:Number(r.pensionEmployer||0),nhf:Number(r.nhf||0),nsitf:Number(r.nsitf||0),otherDeductions:Number(r.otherDeductions||0),net:r.net===''?undefined:Number(r.net)}))};
+    try{
+      let run;
+      if(getApiBase()&&getToken()){
+        run=await PayrollAPI.createManual(payload);
+      }else{
+        const lines=payload.lines.map(line=>{
+          const emp=active.find(e=>e.id===line.employeeId)||{};
+          const deductions=line.monthlyPAYE+line.pensionEmployee+line.nhf+line.otherDeductions;
+          return {...line,name:emp.name||'',role:emp.role||'',bank:emp.bank||'',account:emp.account||'',net:line.net===undefined?Math.max(0,line.gross-deductions):line.net};
+        });
+        run={id:uid(),period,createdAt:new Date().toISOString(),lines,method:'manual',status:'draft',approvedAt:null};
+      }
+      update(s=>{s.runs.push(cloudRunToLocal(run));});
+      showToast('Manual payroll saved as a draft. Review it in History before paying.');
+      setRows(active.map(e=>({employeeId:e.id,gross:String(e.gross??''),monthlyPAYE:'',pensionEmployee:'',pensionEmployer:'',nhf:'',nsitf:'',otherDeductions:'',net:'',notes:''})));
+      setFileName('');
+    }catch(err){showToast('Could not save manual payroll: '+err.message);}
+    finally{setSaving(false);}
+  }
+  const isNigeria=state.countryCode==='NG';
+  const fields=[['gross','Gross pay'],['monthlyPAYE',isNigeria?'PAYE / tax':'Tax / withholding'],['pensionEmployee',isNigeria?'Employee pension':'Employee retirement contribution'],['pensionEmployer',isNigeria?'Employer pension':'Employer retirement contribution'],['nhf',isNigeria?'NHF':'Other employee statutory deduction'],['nsitf',isNigeria?'NSITF':'Employer statutory contribution'],['otherDeductions','Other deductions'],['net','Net pay (optional)']];
+  return <div style={{marginBottom:28}}>
+    <div className="panel-head"><div><h2>Manual payroll entry &amp; upload</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Enter verified payroll figures or import a CSV. Saving creates a draft; it does not transfer money.</p></div></div>
+    <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:10,padding:18,marginBottom:12}}>
+      <div style={{display:'flex',gap:14,alignItems:'end',flexWrap:'wrap'}}>
+        <label style={{fontSize:12,display:'grid',gap:6}}>Payroll period<input type="month" value={period} onChange={e=>setPeriod(e.target.value)} style={{padding:9,borderRadius:6,border:'1px solid var(--line)',background:'var(--paper)',color:'var(--ink)'}} /></label>
+        <label style={{fontSize:12,display:'grid',gap:6}}>Upload payroll CSV<input type="file" accept=".csv,text/csv" onChange={e=>importFile(e.target.files?.[0])} style={{fontSize:12,maxWidth:260}} /></label>
+        {fileName&&<span style={{fontSize:12,color:'var(--teal)'}}>Imported: {fileName}</span>}
+        <button className="btn" onClick={()=>{const headers=['employeeId','gross','monthlyPAYE','pensionEmployee','pensionEmployer','nhf','nsitf','otherDeductions','net','notes'];const csv=[headers.join(','),...active.map(e=>[e.id,e.gross||'', '', '', '', '', '', '', '', ''].join(','))].join('\n');const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));const a=document.createElement('a');a.href=url;a.download='medash-payroll-template.csv';a.click();URL.revokeObjectURL(url);}}>Download CSV template</button>
+      </div>
+      {csvError&&<p role="alert" style={{color:'var(--coral)',fontSize:12,marginBottom:0}}>{csvError}</p>}
+      <p style={{fontSize:11.5,color:'var(--muted)',lineHeight:1.6,marginBottom:0}}>{state.countryCode==='NG'?'CSV columns: employeeId (or exact employee name), gross, monthlyPAYE, pensionEmployee, pensionEmployer, nhf, nsitf, otherDeductions, net, notes. Net pay may be left blank to calculate gross minus entered employee deductions.':'CSV template keeps legacy column keys for compatibility: monthlyPAYE = tax/withholding, nhf = other employee statutory deduction, nsitf = employer statutory contribution. Enter only figures verified for the selected jurisdiction.'} Use CSV UTF-8 and review imported data before saving.</p>
+    </div>
+    {!active.length?<p style={{color:'var(--muted)'}}>Add active employees in Team first.</p>:<>
+      <div style={{overflowX:'auto',border:'1px solid var(--line)',borderRadius:8}}>
+        <table style={{width:'100%',minWidth:920,borderCollapse:'collapse',fontSize:12}}>
+          <thead><tr>{['Employee',...fields.map(f=>f[1])].map(label=><th key={label} style={{textAlign:'left',padding:9,background:'var(--bg-2)',borderBottom:'1px solid var(--line)',whiteSpace:'nowrap'}}>{label}</th>)}</tr></thead>
+          <tbody>{rows.map((row,i)=>{const emp=active.find(e=>e.id===row.employeeId);return <tr key={row.employeeId||i}>
+            <td style={{padding:8,borderBottom:'1px solid var(--line)',whiteSpace:'nowrap'}}>{emp?.name||'Unknown employee'}</td>
+            {fields.map(([key,label])=><td key={key} style={{padding:5,borderBottom:'1px solid var(--line)'}}><input aria-label={emp?.name+' '+label} type="number" min="0" step="0.01" value={row[key]??''} onChange={e=>updateRow(i,key,e.target.value)} style={{width:108,padding:7,border:'1px solid var(--line)',borderRadius:5,background:'var(--paper)',color:'var(--ink)'}} /></td>)}
+          </tr>})}</tbody>
+        </table>
+      </div>
+      <div style={{display:'flex',gap:10,flexWrap:'wrap',marginTop:12}}>
+        <button className="btn btn-primary" disabled={saving} onClick={saveManual}>{saving?'Saving…':'Save manual payroll draft'}</button>
+        <button className="btn" onClick={()=>setRows(active.map(e=>({employeeId:e.id,gross:String(e.gross??''),monthlyPAYE:'',pensionEmployee:'',pensionEmployer:'',nhf:'',nsitf:'',otherDeductions:'',net:'',notes:''})))}>Reset to employee salaries</button>
+      </div>
+    </>}
+  </div>;
+}
+function RunPayroll({state,update,setCurrentTab,showToast}){
+  const manual = <ManualPayroll state={state} update={update} showToast={showToast} />;
+  const country = COUNTRY_LABELS[state.countryCode] || "selected country";
+  return <>
+    <div className="panel-head"><div><h2>Payroll setup</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Selected jurisdiction: {country}</p></div></div>
+    <div style={{border:'1px solid var(--line)',borderLeft:'4px solid var(--coral)',borderRadius:10,padding:22,background:'var(--bg-2)',maxWidth:760,marginBottom:24}}>
+      <h3 style={{margin:'0 0 10px',fontSize:16}}>Manual payroll only — statutory estimates are paused</h3>
+      <p style={{fontSize:13,lineHeight:1.7,color:'var(--paper-dim)',margin:'0 0 12px'}}>Use manual entry or CSV upload for figures checked by a qualified payroll professional. UK and US statutory calculations are not implemented, and Nigeria’s current tax-year rules need professional validation before an automated estimate can safely be offered.</p>
+      <p style={{fontSize:12,lineHeight:1.7,color:'var(--muted)',margin:0}}>Medash does not calculate certified statutory payroll, submit tax filings, remit contributions, or transfer wages. Saved payroll drafts are records only; verify every figure before payment.</p>
+      <button className="btn" style={{marginTop:16}} onClick={()=>setCurrentTab('settings')}>Open Country &amp; Region settings</button>
+    </div>
+    {manual}
+  </>;
+}
+function History({state,expandedRun,setExpandedRun}){
+  if(!state.runs.length) return <><div className="panel-head"><div><h2>History</h2></div></div><div style={{color:'var(--muted)',textAlign:'center',padding:30}}>No payroll runs yet.</div></>;
+  const runs=[...state.runs].reverse();
+  return (<><div className="panel-head"><div><h2>Payroll history</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>{state.runs.length} run{state.runs.length>1?'s':''} recorded</p></div></div>
+    {runs.map(r=>{
+      const total=r.lines.reduce((s,l)=>s+l.gross+l.pensionEmployer,0);
+      const open=expandedRun===r.id;
+      return <div key={r.id} className="run-row" style={{cursor:'pointer'}} onClick={()=>setExpandedRun(open?null:r.id)}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><div><div style={{fontFamily:'Newsreader',fontWeight:600,fontSize:16}}>{periodLabel(r.period)}</div><div style={{fontSize:12,opacity:0.6,marginTop:2}}>{r.lines.length} teammates · {formatDate(r.createdAt)}</div></div><div style={{fontFamily:'IBM Plex Mono',fontWeight:600}}>{money(total)}</div></div>
+        {open && <div style={{marginTop:14,borderTop:'1px solid rgba(32,21,38,0.1)',paddingTop:12}}>
+          <div style={{display:'grid',gridTemplateColumns:'1.2fr 1fr 1fr',gap:8,padding:'6px 0',fontSize:10,opacity:0.55,textTransform:'uppercase',letterSpacing:0.05+'em',borderBottom:'1px solid rgba(32,21,38,0.08)'}}><span>Staff</span><span>Account</span><span style={{textAlign:'right'}}>Net</span></div>
+          {r.lines.map(l=><div key={l.employeeId} style={{display:'grid',gridTemplateColumns:'1.2fr 1fr 1fr',gap:8,alignItems:'center',fontSize:12.5,padding:'6px 0'}}><span>{l.name}</span><span style={{fontFamily:'IBM Plex Mono',fontSize:11}}>{l.bank||'—'} · {l.account||'—'}</span><span style={{fontFamily:'IBM Plex Mono',textAlign:'right'}}>{money(l.net)}</span></div>)}
+          <div style={{marginTop:12,display:'flex',gap:8}}><button onClick={(ev)=>{ev.stopPropagation(); printSchedule({companyName: state.companyName, period: r.period, lines: r.lines});}} style={{fontSize:12,background:'#201526',color:'#fff',border:'none',padding:'7px 12px',borderRadius:5,cursor:'pointer'}}>🖨 Printable schedule for Finance/CEO</button></div>
+        </div>}
+      </div>;
+    })}
+  </>);
+}
+function Compliance({state,update}){
+  if(state.countryCode!=='NG') return <>
+    <div className="panel-head"><div><h2>Compliance</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Jurisdiction-specific tracking</p></div></div>
+    <div style={{color:'var(--muted)',padding:22,background:'var(--bg-2)',borderRadius:8,lineHeight:1.7}}>
+      A statutory compliance calendar is not configured for {COUNTRY_LABELS[state.countryCode]||'this jurisdiction'}. This screen will not display Nigerian obligations for a UK or US company. Confirm local filing dates and obligations with a qualified local professional.
+    </div>
+  </>;
+  if(!state.runs.length) return <>
+    <div className="panel-head"><div><h2>Compliance</h2></div></div>
+    <div style={{color:'var(--muted)',textAlign:'center',padding:30}}>Create a payroll record to start internal compliance tracking.</div>
+  </>;
+  const items=[{key:'paye',what:'PAYE remittance',agency:'State IRS'},{key:'pension',what:'Pension remittance',agency:'PenCom / PFA'},{key:'nhf',what:'NHF remittance',agency:'Federal Mortgage Bank'},{key:'nsitf',what:'NSITF contribution',agency:'NSITF'}];
+  const rows=[];
+  [...state.runs].reverse().forEach(r=>items.forEach(it=>rows.push({period:r.period,...it,status:complianceStatus(state,r.period,it.key),due:getDueDates(r.period)[it.key]})));
+  return (<>
+    <div className="panel-head"><div><h2>Internal compliance tracking</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Internal reminders, not certified statutory deadlines</p></div></div>
+    <div style={{padding:12,marginBottom:14,borderRadius:8,background:'var(--bg-2)',color:'var(--muted)',fontSize:12,lineHeight:1.7}}>Nigeria’s tax rules changed in 2026. These legacy reminder dates are for internal tracking only; confirm current obligations and deadlines with a qualified Nigerian payroll professional.</div>
+    <div style={{overflowX:'auto',background:'#EDEEF2',borderRadius:8}}>
+    <table style={{width:'100%',borderCollapse:'collapse',color:'#201526',fontSize:13}}>
+      <thead><tr style={{background:'#E0E2E8'}}><th style={{textAlign:'left',padding:'12px 16px',fontSize:10.5,textTransform:'uppercase',opacity:0.55}}>Period</th><th style={{textAlign:'left',padding:'12px 16px',fontSize:10.5,textTransform:'uppercase',opacity:0.55}}>Internal reminder</th><th style={{textAlign:'left',padding:'12px 16px',fontSize:10.5,textTransform:'uppercase',opacity:0.55}}>Agency</th><th style={{textAlign:'left',padding:'12px 16px',fontSize:10.5,textTransform:'uppercase',opacity:0.55}}>Reminder date</th><th style={{textAlign:'left',padding:'12px 16px',fontSize:10.5,textTransform:'uppercase',opacity:0.55}}>Status</th><th></th></tr></thead>
+      <tbody>{rows.map((row,i)=>{
+        const bg=row.status==='filed'?'rgba(76,133,119,0.15)':row.status==='overdue'?'rgba(226,115,91,0.18)':'rgba(201,162,39,0.18)';
+        const color=row.status==='filed'?'#2E5C51':row.status==='overdue'?'#8C3B28':'#8A6B0F';
+        const label=row.status==='filed'?'Marked filed':row.status==='overdue'?'Past reminder date':'Pending';
+        return <tr key={i} style={{borderBottom:'1px solid rgba(32,21,38,0.07)'}}><td style={{padding:'12px 16px'}}>{periodLabel(row.period)}</td><td style={{padding:'12px 16px'}}>{row.what}</td><td style={{padding:'12px 16px'}}>{row.agency}</td><td style={{padding:'12px 16px',fontFamily:'IBM Plex Mono'}}>{formatDate(row.due)}</td><td style={{padding:'12px 16px'}}><span style={{fontFamily:'IBM Plex Mono',fontSize:10,padding:'4px 8px',borderRadius:20,background:bg,color}}>{label}</span></td><td style={{padding:'12px 16px'}}><button onClick={()=>update(s=>{if(!s.compliance[row.period]) s.compliance[row.period]={}; s.compliance[row.period][row.key]=!s.compliance[row.period][row.key];})} style={{background:row.status==='filed'?'var(--teal)':'none',color:row.status==='filed'?'#fff':'var(--ink)',border:'1px solid rgba(32,21,38,0.2)',borderRadius:20,padding:'5px 12px',fontSize:11.5,cursor:'pointer'}}>{row.status==='filed'?'Marked ✓':'Mark reviewed'}</button></td></tr>;
+      })}</tbody>
+    </table>
+    </div>
+  </>);
+}
+function Reviews({state,update,setModal}){
+  const emp=(id)=>state.employees.find(e=>e.id===id);
+  const list=[...state.reviews].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  return (<>
+    <div className="panel-head"><div><h2>Performance reviews</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>{state.reviews.length} review{state.reviews.length!==1?'s':''} recorded</p></div><button className="btn btn-primary" onClick={()=>setModal({type:'review'})}>+ Add review</button></div>
+    {list.length? list.map(r=>{
+      const e=emp(r.employeeId);
+      return <div key={r.id} style={{background:'var(--paper)',color:'var(--ink)',borderRadius:8,padding:'16px 18px',marginBottom:10}}><div style={{display:'flex',justifyContent:'space-between'}}><span style={{fontWeight:600,fontSize:14}}>{e?e.name:'Former teammate'}{e?` — ${e.role}`:''}</span><span style={{fontSize:11.5,opacity:0.55}}>{formatDate(r.date)}</span></div><div style={{color:'var(--gold)',marginTop:4}}>{'★'.repeat(r.rating)}{'☆'.repeat(5-r.rating)}</div><div style={{fontSize:13,marginTop:8,opacity:0.85}}>{r.notes}</div></div>;
+    }): <div style={{color:'var(--muted)',textAlign:'center',padding:30}}>No reviews yet.</div>}
+  </>);
+}
+function Hiring({state,update,setModal,showToast}){
+  const stages=['Applied','Screening','Interview','Offer','Hired','Rejected'];
+  return (<>
+    <div className="panel-head"><div><h2>Hiring pipeline</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>{state.candidates.length} candidate{state.candidates.length!==1?'s':''} in pipeline</p></div><button className="btn btn-primary" onClick={()=>setModal({type:'candidate'})}>+ Add candidate</button></div>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(6, minmax(160px,1fr))',gap:12,overflowX:'auto'}}>
+      {stages.map(stage=>{
+        const inStage=state.candidates.filter(c=>c.stage===stage);
+        return <div key={stage} style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:12,minWidth:160}}><h4 style={{fontSize:11.5,textTransform:'uppercase',color:'var(--muted)',marginBottom:10}}>{stage} ({inStage.length})</h4>
+          {inStage.map(c=><div key={c.id} style={{background:'var(--paper)',color:'var(--ink)',borderRadius:6,padding:'10px 12px',marginBottom:8,fontSize:12.5}}><div style={{fontWeight:600}}>{c.name}</div><div style={{opacity:0.6,fontSize:11}}>{c.role}</div><select value={c.stage} onChange={e=>update(s=>{s.candidates.find(x=>x.id===c.id).stage=e.target.value;})} style={{width:'100%',marginTop:8,fontSize:11,padding:5,borderRadius:4,border:'1px solid rgba(32,21,38,0.2)',background:'#fff'}}>{stages.map(s=><option key={s} value={s}>{s}</option>)}</select>{c.stage==='Offer' && <button onClick={()=>{update(s=>{const cand=s.candidates.find(x=>x.id===c.id); cand.stage='Hired'; s.employees.push({id:uid(),name:cand.name,role:cand.role,gross:0,bank:'',account:'',startDate:new Date().toISOString().slice(0,10),dob:'',active:true,color:AVATAR_COLORS[s.employees.length%AVATAR_COLORS.length], nin:'',payeTin:'',nhfNumber:'',pensionPin:'',nsitfNumber:'', passportPhoto:null, documents: Object.fromEntries(DOC_TYPES.map(dt=>[dt.key,null]))});}); showToast(`${c.name} hired — set salary in Team`);}} style={{width:'100%',marginTop:6,background:'var(--teal)',color:'#fff',border:'none',borderRadius:4,padding:6,fontSize:11,cursor:'pointer'}}>Mark hired</button>}</div>)}
+        </div>;
+      })}
+    </div>
+  </>);
+}
+function Reports({state}){
+  const runs=state.runs;
+  const totalRecordedCost=runs.reduce((s,r)=>s+(r.lines||[]).reduce((s2,l)=>s2+Number(l.gross||0)+Number(l.pensionEmployer||0),0),0);
+  const latestLines=runs.length?(runs[runs.length-1].lines||[]):[];
+  const avgNet=latestLines.length?Math.round(latestLines.reduce((s,l)=>s+Number(l.net||0),0)/latestLines.length):0;
+  const rows=[];
+  if(state.countryCode==='NG') runs.forEach(r=>['paye','pension','nhf','nsitf'].forEach(item=>rows.push(complianceStatus(state,r.period,item))));
+  const filedRate=rows.length?Math.round(100*rows.filter(s=>s==='filed').length/rows.length):0;
+  const turnover=state.employees.length?Math.round(100*state.employees.filter(e=>!e.active).length/state.employees.length):0;
+  const maxCost=Math.max(...runs.map(r=>(r.lines||[]).reduce((s,l)=>s+Number(l.gross||0)+Number(l.pensionEmployer||0),0)),1);
+  return (<>
+    <div className="panel-head"><div><h2>Reports</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>Trends across recorded payroll and team history</p></div></div>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:14,marginBottom:30}}>
+      <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:16}}><div style={{fontSize:10.5,textTransform:'uppercase',color:'var(--muted)',marginBottom:6}}>Recorded payroll cost</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{money(totalRecordedCost)}</div></div>
+      <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:16}}><div style={{fontSize:10.5,textTransform:'uppercase',color:'var(--muted)',marginBottom:6}}>Latest run · avg. net pay</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{latestLines.length?money(avgNet):'—'}</div></div>
+      <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:16}}><div style={{fontSize:10.5,textTransform:'uppercase',color:'var(--muted)',marginBottom:6}}>Internal filing tracker</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{state.countryCode==='NG'&&rows.length?filedRate+'%':'—'}</div></div>
+      <div style={{background:'var(--bg-2)',border:'1px solid var(--line)',borderRadius:8,padding:16}}><div style={{fontSize:10.5,textTransform:'uppercase',color:'var(--muted)',marginBottom:6}}>Inactive team rate</div><div style={{fontFamily:'Newsreader',fontSize:22,fontWeight:600}}>{turnover}%</div></div>
+    </div>
+    <div className="panel-head"><div><h2>Recorded payroll cost per run</h2></div></div>
+    {runs.length? <div style={{display:'flex',alignItems:'flex-end',gap:10,height:140,padding:'10px 0'}}>{runs.map(r=>{
+      const cost=(r.lines||[]).reduce((s,l)=>s+Number(l.gross||0)+Number(l.pensionEmployer||0),0);
+      const h=Math.round((cost/maxCost)*110)+10;
+      return <div key={r.id} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,flex:1}}><div style={{fontSize:10.5,fontFamily:'IBM Plex Mono'}}>{(cost/1000).toFixed(0)}k</div><div style={{width:'100%',maxWidth:36,background:'var(--coral)',borderRadius:'4px 4px 0 0',height:h}}></div><div style={{fontSize:10,color:'var(--muted)'}}>{periodLabel(r.period).slice(0,3)}</div></div>;
+    })}</div> : <div style={{color:'var(--muted)',textAlign:'center',padding:30}}>Save a payroll draft to see cost trends.</div>}
+  </>);
+}
+function MyProfile({state}){
+  const e=state.employees.find(x=>x.id===state.viewingEmployeeId)||state.employees[0];
+  if(!e) return <div style={{color:'var(--muted)',textAlign:'center',padding:30}}>No employee record</div>;
+  const myRuns=state.runs.map(r=>({period:r.period,line:(r.lines||[]).find(l=>l.employeeId===e.id)})).filter(r=>r.line).reverse();
+  const latest=myRuns[0]?.line;
+  const myReviews=state.reviews.filter(r=>r.employeeId===e.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  return (<>
+    <div className="panel-head"><div><h2>{e.name}</h2><p style={{fontSize:12.5,color:'var(--muted)'}}>{e.role}</p></div></div>
+    <div style={{fontSize:10.5,textTransform:'uppercase',opacity:0.55,fontWeight:600,margin:'16px 0 8px'}}>Latest recorded payslip</div>
+    {latest ? <div className="run-row" style={{cursor:'default'}}>
+      <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',borderBottom:'1px solid rgba(32,21,38,0.08)',fontSize:13}}><span>Period</span><span style={{fontFamily:'IBM Plex Mono',fontWeight:500}}>{periodLabel(myRuns[0].period)}</span></div>
+      <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',borderBottom:'1px solid rgba(32,21,38,0.08)',fontSize:13}}><span>Gross salary</span><span style={{fontFamily:'IBM Plex Mono',fontWeight:500}}>{money(latest.gross)}</span></div>
+      <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',borderBottom:'1px solid rgba(32,21,38,0.08)',fontSize:13,color:'#8C3B28'}}><span>Total recorded deductions</span><span style={{fontFamily:'IBM Plex Mono'}}>− {money(Math.max(0,Number(latest.gross||0)-Number(latest.net||0)))}</span></div>
+      <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontWeight:700,fontSize:14.5}}><span>Recorded net pay</span><span style={{fontFamily:'IBM Plex Mono'}}>{money(latest.net)}</span></div>
+      <p style={{fontSize:11,color:'var(--muted)',lineHeight:1.6}}>This is the latest saved payroll record, not proof of payment or a statutory payslip certification.</p>
+    </div> : <div style={{color:'var(--muted)',padding:20,background:'var(--bg-2)',borderRadius:8}}>No payroll record has been saved for you yet. A current net-pay estimate is not shown because statutory rules are not validated for all supported jurisdictions.</div>}
+    <div className="panel-head" style={{marginTop:26}}><div><h2>Payslip history</h2></div></div>
+    {myRuns.length? myRuns.map(r=><div key={r.period} className="run-row" style={{cursor:'default',display:'flex',justifyContent:'space-between'}}><span style={{fontFamily:'Newsreader',fontWeight:600}}>{periodLabel(r.period)}</span><span style={{fontFamily:'IBM Plex Mono',fontWeight:600}}>{money(r.line.net)}</span></div>) : <div style={{color:'var(--muted)',textAlign:'center',padding:20}}>No payroll runs yet.</div>}
+    <div className="panel-head" style={{marginTop:26}}><div><h2>My reviews</h2></div></div>
+    {myReviews.length? myReviews.map(r=><div key={r.id} style={{background:'var(--paper)',color:'var(--ink)',borderRadius:8,padding:'16px 18px',marginBottom:10}}><div style={{color:'var(--gold)'}}>{'★'.repeat(r.rating)}{'☆'.repeat(5-r.rating)}</div><div style={{fontSize:13,marginTop:8}}>{r.notes}</div><div style={{fontSize:11,opacity:0.55,marginTop:4}}>{formatDate(r.date)}</div></div>): <div style={{color:'var(--muted)',textAlign:'center',padding:20}}>No reviews yet.</div>}
+  </>);
+}
+
+function CourseView({tr, state, update, showToast, close}){
+  const [answers,setAnswers]=useState({});
+  const [showResult,setShowResult]=useState(null);
+  const [activeModuleId,setActiveModuleId]=useState(null);
+  if(!tr) return <div style={{padding:20,color:'#8C3B28'}}>Course not found — please return to the catalogue and open it again.</div>;
+  const isEmployee=state.currentRole==='employee';
+  const myId=state.viewingEmployeeId||state.employees[0]?.id;
+  const modules=Array.isArray(tr.modules)?tr.modules:[];
+  const quizQuestions=Array.isArray(tr.questions)&&tr.questions.length
+    ? tr.questions.map((q,i)=>({q:q.text,a:q.options,correct:q.correctIndex,id:q.id||String(i)}))
+    : [
+      {q:'What is the primary goal of this training?', a:['Compliance','Entertainment','None'], correct:0, id:'0'},
+      {q:'Pass mark for the test is?', a:['50%','70%','90%'], correct:1, id:'1'},
+      {q:'Who should report an incident?', a:['Only manager','Everyone','No one'], correct:1, id:'2'},
+    ];
+  const passPercent=Number.isInteger(tr.passPercent)?tr.passPercent:70;
+  const enrollment=state.enrollments.find(e=>e.employeeId===myId && e.trainingId===tr.id);
+  const completedModules=enrollment?.completedModules||[];
+  const activeModule=modules.find(m=>m.id===activeModuleId)||null;
+  const lessons=modules.filter(m=>m.type!=='quiz');
+  function markLessonComplete(module){
+    update(s=>{
+      let record=s.enrollments.find(e=>e.employeeId===myId && e.trainingId===tr.id);
+      if(!record){
+        record={id:uid(),employeeId:myId,trainingId:tr.id,progress:0,completedModules:[],enrolledAt:new Date().toISOString().slice(0,10),completedAt:null,score:null,certificateId:null};
+        s.enrollments.push(record);
+      }
+      if(!record.completedModules.includes(module.id)) record.completedModules.push(module.id);
+      const total=modules.length||1;
+      record.progress=Math.round(100*record.completedModules.length/total);
+    });
+    showToast('Lesson marked as completed');
+  }
+  async function submitQuiz(){
+    if(quizQuestions.some((qq)=>answers[qq.id]===undefined)){ showToast('Please answer every question first'); return; }
+    let pct=0, pass=false;
+    try {
+      if(state.currentRole==='employee' && getApiBase() && getToken()){
+        const scored=await api('/api/training/submit',{method:'POST',body:{trainingId:tr.id,answers}});
+        pct=scored.result.percent; pass=scored.result.passed;
+      } else {
+        const score=quizQuestions.reduce((sum,qq)=>sum+(answers[qq.id]===qq.correct?1:0),0);
+        pct=Math.round(100*score/quizQuestions.length); pass=pct>=passPercent;
+      }
+    } catch(err){ showToast('Exam could not be scored: '+err.message); return; }
+    setShowResult({score:pct, pass});
+    if(pass){
+      update(s=>{
+        let my=s.enrollments.find(e=>e.employeeId===myId && e.trainingId===tr.id);
+        if(!my){ my={id:uid(),employeeId:myId,trainingId:tr.id,progress:0,completedModules:[],enrolledAt:new Date().toISOString().slice(0,10),completedAt:null,score:null,certificateId:null}; s.enrollments.push(my); }
+        modules.forEach(m=>{if(!my.completedModules.includes(m.id)) my.completedModules.push(m.id);});
+        my.progress=100;
+        my.score=pct;
+        if(!my.certificateId){ const cid=uid(); my.certificateId=cid; my.completedAt=new Date().toISOString().slice(0,10); s.certificates.push({id:cid,employeeId:myId,trainingId:tr.id,issuedAt:my.completedAt,score:pct}); }
+      });
+    }
+  }
+  return <>
+    <div style={{background:'rgba(32,21,38,0.05)',borderRadius:8,padding:12,marginBottom:14}}>
+      <div style={{fontSize:11,opacity:0.6}}>{tr.category} · {tr.duration} · {tr.required?'Required':''}</div>
+      <div style={{fontWeight:700,marginTop:4,fontSize:18}}>{tr.title}</div>
+      <div style={{fontSize:12,opacity:0.7,marginTop:4}}>{tr.description}</div>
+      {tr.objectives&&<div style={{fontSize:12,marginTop:8,lineHeight:1.6}}><strong>Learning objectives:</strong> {tr.objectives}</div>}
+      <div style={{fontSize:11,marginTop:9,color:'var(--muted)'}}>Your learning progress: {enrollment?.progress||0}% · {completedModules.length}/{modules.length} course sections completed</div>
+    </div>
+    <div style={{fontSize:12,fontWeight:700,marginBottom:8}}>Course lessons</div>
+    {modules.map((m,i)=>{
+      const isQuiz=m.type==='quiz';
+      const isDone=completedModules.includes(m.id);
+      const selected=activeModuleId===m.id;
+      return <div key={m.id} style={{display:'flex',alignItems:'center',gap:10,padding:'11px 12px',background:selected?'#F0F5F3':'#fff',border:'1px solid '+(selected?'#4C8577':'rgba(32,21,38,0.12)'),borderRadius:7,marginBottom:7}}>
+        <div style={{width:26,height:26,borderRadius:20,display:'grid',placeItems:'center',background:isDone?'#4C8577':'#EDEEF2',color:isDone?'#fff':'#201526',fontSize:11,fontWeight:700}}>{isDone?'✓':i+1}</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:13,fontWeight:600}}>{m.title}</div>
+          <div style={{fontSize:11,opacity:0.65,marginTop:3}}>{m.duration||'Lesson'} · {isQuiz?'Assessment':(m.type||'Lesson')}</div>
+        </div>
+        <button onClick={()=>{setActiveModuleId(m.id);setShowResult(null);}} style={{background:isQuiz?'#E2735B':'#286c62',color:'#fff',border:0,padding:'7px 10px',borderRadius:5,fontSize:11,cursor:'pointer'}}>{isQuiz?'Open test':'Study lesson'}</button>
+      </div>;
+    })}
+    {activeModule && activeModule.type!=='quiz' && <section style={{marginTop:14,background:'#fff',border:'1px solid #D9E1DE',borderRadius:9,padding:16}}>
+      <div style={{fontSize:10,textTransform:'uppercase',letterSpacing:'0.08em',color:'#286c62',fontWeight:700}}>Learning material · {activeModule.duration||'Self-paced'}</div>
+      <h3 style={{fontSize:17,margin:'7px 0 12px',color:'#201526'}}>{activeModule.title}</h3>
+      <div style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',fontSize:13,lineHeight:1.8,color:'#28333B'}}>{activeModule.content||'No written lesson content has been added to this section yet. Please contact your HR administrator for the learning material.'}</div>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:16}}>
+        {!completedModules.includes(activeModule.id)?<button onClick={()=>markLessonComplete(activeModule)} style={{background:'#286c62',color:'#fff',border:0,borderRadius:6,padding:'9px 13px',fontSize:12,cursor:'pointer'}}>Mark lesson complete</button>:<span style={{fontSize:12,color:'#286c62',fontWeight:700,padding:'9px 0'}}>Lesson completed ✓</span>}
+        {lessons.findIndex(m=>m.id===activeModule.id)<lessons.length-1&&<button onClick={()=>{const index=lessons.findIndex(m=>m.id===activeModule.id);setActiveModuleId(lessons[index+1].id);}} style={{background:'#F0F2F4',color:'#201526',border:0,borderRadius:6,padding:'9px 13px',fontSize:12,cursor:'pointer'}}>Next lesson →</button>}
+      </div>
+    </section>}
+    {activeModule?.type==='quiz' && <div id="quiz-area" style={{marginTop:14,background:'#fff',border:'1px solid #ddd',borderRadius:8,padding:14}}>
+      <div style={{fontWeight:700,fontSize:14}}>Final assessment — {tr.title}</div>
+      <div style={{fontSize:11,color:'var(--muted)',marginTop:4,marginBottom:8}}>Pass mark: {passPercent}%. You can review the lessons above before submitting.</div>
+      {showResult ? <div style={{textAlign:'center',padding:16}}><div style={{fontSize:22,fontWeight:700,color:showResult.pass?'#4C8577':'#E2735B'}}>{showResult.pass?'Passed ✓':'Not passed yet'}</div><div style={{fontFamily:'monospace',fontSize:22,marginTop:6}}>{showResult.score}%</div><div style={{fontSize:11,opacity:0.7,marginTop:4}}>{showResult.pass?'Course completed. Your certificate is available in Training → Certificates.':'Review the lessons and try again.'}</div><button onClick={()=>{setShowResult(null);setAnswers({});}} style={{marginTop:10,background:'#201526',color:'#fff',border:0,padding:'8px 12px',borderRadius:6,fontSize:12,cursor:'pointer'}}>Retake test</button></div>:
+      <div>
+        {quizQuestions.map((qq,i)=><div key={qq.id||i} style={{marginTop:10,padding:10,background:'rgba(32,21,38,0.04)',borderRadius:6}}>
+          <div style={{fontSize:12,fontWeight:600}}>{i+1}. {qq.q}</div>
+          <div style={{display:'flex',gap:8,marginTop:7,flexWrap:'wrap'}}>{qq.a.map((opt,oi)=><label key={oi} style={{fontSize:11,background:answers[qq.id]===oi?'#201526':'#fff',color:answers[qq.id]===oi?'#fff':'#201526',border:'1px solid #ddd',padding:'6px 10px',borderRadius:20,cursor:'pointer'}}><input type="radio" name={'q'+qq.id} checked={answers[qq.id]===oi} onChange={()=>setAnswers(old=>({...old,[qq.id]:oi}))} style={{display:'none'}}/>{opt}</label>)}</div>
+        </div>)}
+        <button onClick={submitQuiz} style={{marginTop:14,background:'#E2735B',color:'#fff',border:0,padding:'9px 14px',borderRadius:6,fontSize:12,cursor:'pointer',width:'100%'}}>Submit test</button>
+      </div>}
+    </div>}
+    {!activeModule&&<div style={{marginTop:14,background:'#F6F7F8',borderRadius:8,padding:14,fontSize:12,color:'#586574'}}>Select a lesson above to open its learning material. Study the lessons at your own pace, then select the final assessment when you are ready.</div>}
+    <div style={{marginTop:14,textAlign:'right'}}><button onClick={close} style={{background:'#201526',color:'#fff',border:0,padding:'8px 13px',borderRadius:6,fontSize:12,cursor:'pointer'}}>Close course</button></div>
+  </>;
+}
+function AuthScreen({authForm,setAuthForm,onAuth,showToast}){
+  const [busy,setBusy]=useState(false);
+  const f=authForm;
+  async function submit(e){
+    e.preventDefault();
+    setBusy(true);
+    try{
+      if(f.mode==='signup'){
+        if(!f.companyName||!f.name||!f.email||f.password.length<8){ showToast('Fill company, name, valid email, password 8+ chars'); setBusy(false); return; }
+        const r=await AuthAPI.signup({companyName:f.companyName,name:f.name,email:f.email,password:f.password,countryCode:f.countryCode||"NG"});
+        setSession(r.token,r.user); showToast('Company created — welcome ✓'); onAuth();
+      } else {
+        if(!f.email||!f.password){ showToast('Enter email + password'); setBusy(false); return; }
+        const r=await AuthAPI.login({email:f.email,password:f.password});
+        setSession(r.token,r.user); showToast(`Welcome back, ${r.user.name} ✓`); onAuth();
+      }
+    }catch(err){ showToast(err.message||'Login failed'); }
+    setBusy(false);
+  }
+  return (
+    <div style={{minHeight:'100vh', background:'#241623', color:'#EDEEF2', display:'flex', alignItems:'center', justifyContent:'center', padding:24}}>
+      <div style={{maxWidth:480, width:'100%', background:'#EDEEF2', color:'#201526', borderRadius:12, padding:32, boxShadow:'0 20px 60px rgba(0,0,0,0.4)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:12}}><div style={{width:36,height:36,borderRadius:'50% 50% 50% 6px',background:'#E2735B'}}/><div><div style={{fontFamily:'Newsreader, serif',fontStyle:'italic',fontWeight:700,fontSize:22}}>Medash HR Suite Cloud</div><div style={{fontSize:12,opacity:0.6}}>Real login · Postgres · server payroll — {getApiBase()}</div></div></div>
+        <div style={{display:'flex',gap:8,marginBottom:16}}>
+          {['login','signup'].map(m=><button key={m} onClick={()=>setAuthForm({...f,mode:m})} style={{flex:1,padding:'9px 0',borderRadius:6,border:'1px solid rgba(32,21,38,0.2)',background:f.mode===m?'#201526':'transparent',color:f.mode===m?'#fff':'#201526',fontSize:13,fontWeight:600,cursor:'pointer',textTransform:'capitalize'}}>{m==='login'?'Log in':'New company'}</button>)}
+        </div>
+        <form onSubmit={submit}>
+          {f.mode==='signup' && <><div className="field"><label>Company name</label><input value={f.companyName} onChange={e=>setAuthForm({...f,companyName:e.target.value})} placeholder="e.g. GreenField Ltd"/></div>
+          <div className="field"><label>Company country</label><select value={f.countryCode||"NG"} onChange={e=>setAuthForm({...f,countryCode:e.target.value})}>{getCountryOptions().map(country=><option key={country.countryCode} value={country.countryCode}>{country.countryCode==="GB"?"Europe/UK":country.label}</option>)}</select></div>
+          <div className="field"><label>Your name</label><input value={f.name} onChange={e=>setAuthForm({...f,name:e.target.value})} placeholder="e.g. Ada Obi"/></div></>}
+          <div className="field"><label>Email</label><input value={f.email} onChange={e=>setAuthForm({...f,email:e.target.value})} placeholder="you@company.com"/></div>
+          <div className="field"><label>Password (8+ chars)</label><input type="password" value={f.password} onChange={e=>setAuthForm({...f,password:e.target.value})}/></div>
+          <button type="submit" disabled={busy} className="btn btn-primary" style={{width:'100%',marginTop:4,padding:12,opacity:busy?0.6:1}}>{busy?'Please wait…':f.mode==='signup'?'Create company + owner login':'Log in'}</button>
+        </form>
+        <div style={{marginTop:14,display:'flex',gap:8,flexWrap:'wrap'}}>
+          <button onClick={()=>{ try{const old=localStorage.getItem('medash_state_v1'); sessionStorage.setItem('medash_owner_demo_backup',old===null?'__EMPTY__':old);}catch{} clearSession(); location.href='?demo=1&local=1&freshDemo=1'; }} style={{fontSize:12,border:'1px solid #E2735B',padding:'9px 12px',borderRadius:6,background:'#E2735B',color:'#fff',fontWeight:700,cursor:'pointer'}}>Owner demo login · sample data</button>
+          <button onClick={()=>{ location.href='?local=1'; }} style={{fontSize:12,border:'1px solid rgba(32,21,38,0.2)',padding:'8px 12px',borderRadius:6,background:'transparent',cursor:'pointer'}}>Continue offline</button>
+          <button onClick={()=>{ const u=prompt('Backend URL (empty = default from deploy):', localStorage.getItem('medash_api_base')||''); if(u!==null){ setApiBaseOverride(u.trim()); location.reload(); } }} style={{fontSize:12,border:'1px solid rgba(32,21,38,0.2)',padding:'8px 12px',borderRadius:6,background:'transparent',cursor:'pointer'}}>Change backend URL</button>
+        </div>
+        <p style={{fontSize:11,opacity:0.55,marginTop:14}}>Each person logs in with their own email — employees only ever see their own payslip. Invite them from Team → Invite after logging in.</p>
+      </div>
+    </div>
+  );
+}
+function Modal({modal,setModal,state,update,showToast}){
+  const [form,setForm]=useState(()=>{
+    if(modal.type==='employee'){
+      if(modal.data){ const e=state.employees.find(x=>x.id===modal.data); return {name:e.name,role:e.role,gross:e.gross,bank:e.bank,account:e.account,startDate:e.startDate,dob:e.dob||''}; } else return {name:'',role:'',gross:'',bank:'',account:'',startDate:'',dob:''};
+    }
+    if(modal.type==='review') return {emp:state.employees.filter(e=>e.active)[0]?.id||'',rating:0,notes:''};
+    if(modal.type==='candidate') return {name:'',role:'',notes:''};
+    if(modal.type==='course') return {title:'',category:'Compliance',duration:'2h',description:'',required:true};
+    if(modal.type==='editCourse'){ const tr=state.trainings.find(x=>x.id===modal.data); return {title:tr.title,category:tr.category,duration:tr.duration,description:tr.description,required:tr.required}; }
+    if(modal.type==='enroll') return {employeeId: state.employees.filter(e=>e.active)[0]?.id||'', trainingId: modal.preset|| state.trainings[0]?.id||''};
+    if(modal.type==='leave') return {employeeId: state.employees.filter(e=>e.active)[0]?.id||'', type:'annual', from:'', to:'', reason:''};
+    if(modal.type==='attendance') return {employeeId: state.employees.filter(e=>e.active)[0]?.id||'', date:new Date().toISOString().slice(0,10), clockIn:'08:00', clockOut:'', status:'present'};
+    if(modal.type==='orgUnit'){ if(modal.data){ const u=state.orgUnits.find(x=>x.id===modal.data); return {name:u.name, head:u.head||'', color:u.color}; } return {name:'', head:'', color:'#4C8577'}; }
+    if(modal.type==='assignDept') return {employeeId: state.employees[0]?.id||'', dept: state.orgUnits[0]?.id||''};
+    return {};
+  });
+  const [ids,setIds]=useState(()=>{ if(modal.type==='staffDocs'){ const e=state.employees.find(x=>x.id===modal.data); return {nin:e.nin||'',payeTin:e.payeTin||'',nhfNumber:e.nhfNumber||'',pensionPin:e.pensionPin||'',nsitfNumber:e.nsitfNumber||''}; } return {}; });
+  function close(){ setModal(null); }
+
+  async function handleUpload(docKey, file){
+    if(!file) return;
+    if(file.size>6*1024*1024){ alert('File too large — max 6MB (offline storage limit)'); return; }
+    if(docKey==='passport' && file.type && !file.type.startsWith('image/')){ alert('Passport photo must be an image (JPG/PNG)'); return; }
+    const reader=new FileReader();
+    reader.onload=()=>{
+      update(s=>{
+        const emp=s.employees.find(x=>x.id===modal.data);
+        emp.documents[docKey]={fileName:file.name, size:file.size, uploadedAt:new Date().toISOString().slice(0,10), dataUrl: reader.result, status:'pending'};
+        if(docKey==='passport'){ emp.passportPhoto=reader.result; }
+      });
+      showToast(`${DOC_TYPES.find(d=>d.key===docKey).label} uploaded — ${docKey==='passport'?'profile picture updated': 'offline saved'}`);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  if(modal.type==='staffDocs'){
+    const e=state.employees.find(x=>x.id===modal.data);
+    const pct=Math.round(100*DOC_TYPES.filter(dt=>e.documents?.[dt.key]).length/DOC_TYPES.length);
+    const grouped={};
+    DOC_TYPES.forEach(dt=>{ if(!grouped[dt.category]) grouped[dt.category]=[]; grouped[dt.category].push(dt); });
+    async function handlePassport(file){
+      if(!file) return;
+      if(file.size>4*1024*1024){ alert('Passport photo too large — max 4MB'); return; }
+      if(!file.type.startsWith('image/')){ alert('Please upload an image (JPG/PNG)'); return; }
+      const reader=new FileReader();
+      reader.onload=()=>{
+        update(s=>{ const emp=s.employees.find(x=>x.id===e.id); emp.passportPhoto=reader.result; emp.documents['passport']={fileName:file.name, size:file.size, uploadedAt:new Date().toISOString().slice(0,10), dataUrl:reader.result, status:'pending'}; });
+        showToast('Passport photo uploaded — profile updated');
+      };
+      reader.readAsDataURL(file);
+    }
+    return (
+      <div className="overlay" onClick={e2=>{if(e2.target.classList.contains('overlay')) close();}}>
+        <div className="modal" style={{maxWidth:720}}>
+          <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}><div style={{display:'flex',gap:14,alignItems:'center'}}>
+            <div style={{width:64,height:64,borderRadius:'50%',overflow:'hidden',background:e.color,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,border:'2px solid rgba(32,21,38,0.1)'}}>
+              {e.passportPhoto ? <img src={e.passportPhoto} alt="passport" style={{width:'100%',height:'100%',objectFit:'cover'}}/> : <span style={{color:'#fff',fontFamily:'Newsreader',fontWeight:700,fontSize:20}}>{initials(e.name)}</span>}
+            </div>
+            <div><h3 style={{fontFamily:'Newsreader',fontSize:20,fontWeight:600}}>{e.name}</h3><p style={{fontSize:12,opacity:0.6}}>{e.role} · {pct}% docs complete</p>
+              <label style={{fontSize:11,background:'var(--paper-dim)',padding:'4px 8px',borderRadius:5,cursor:'pointer',marginTop:6,display:'inline-block'}}>📷 {e.passportPhoto?'Change':'Upload'} passport photo<input type="file" accept="image/*" style={{display:'none'}} onChange={ev=>handlePassport(ev.target.files[0])}/></label>
+              {e.passportPhoto && <button onClick={()=>update(s=>{ const emp=s.employees.find(x=>x.id===e.id); emp.passportPhoto=null; emp.documents['passport']=null; })} style={{fontSize:11,marginLeft:6,background:'transparent',border:'1px solid rgba(226,115,91,0.4)',color:'#8C3B28',padding:'4px 8px',borderRadius:5,cursor:'pointer'}}>Remove</button>}
+            </div>
+          </div><button onClick={close} style={{background:'none',border:'none',cursor:'pointer',fontSize:20,opacity:0.55,height:32}}>✕</button></div>
+          <div style={{height:6,background:'rgba(32,21,38,0.1)',borderRadius:6,overflow:'hidden',marginBottom:16}}><div style={{width:`${pct}%`,height:'100%',background:'var(--teal)'}}/></div>
+
+          {state.countryCode==='NG' ? <div style={{background:'rgba(32,21,38,0.05)',borderRadius:8,padding:14,marginBottom:16}}>
+            <div style={{fontSize:11,fontWeight:600,letterSpacing:0.06+'em',textTransform:'uppercase',opacity:0.6,marginBottom:8}}>Nigeria ID & statutory references (saved locally only)</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+              <div className="field" style={{marginBottom:0}}><label>NIN (11 digits)</label><input value={ids.nin} onChange={ev=>setIds({...ids,nin:ev.target.value})} placeholder="12345678901"/></div>
+              <div className="field" style={{marginBottom:0}}><label>PAYE / TIN</label><input value={ids.payeTin} onChange={ev=>setIds({...ids,payeTin:ev.target.value})} placeholder="PAYE-..."/></div>
+              <div className="field" style={{marginBottom:0}}><label>NHF Number</label><input value={ids.nhfNumber} onChange={ev=>setIds({...ids,nhfNumber:ev.target.value})} placeholder="NHF-..."/></div>
+              <div className="field" style={{marginBottom:0}}><label>Pension PIN</label><input value={ids.pensionPin} onChange={ev=>setIds({...ids,pensionPin:ev.target.value})} placeholder="PEN..."/></div>
+              <div className="field" style={{marginBottom:0}}><label>NSITF Number</label><input value={ids.nsitfNumber} onChange={ev=>setIds({...ids,nsitfNumber:ev.target.value})} placeholder="NSITF-..."/></div>
+              <div style={{display:'flex',alignItems:'flex-end'}}><button className="btn btn-primary btn-sm" onClick={()=>{ update(s=>{ const emp=s.employees.find(x=>x.id===e.id); emp.nin=ids.nin; emp.payeTin=ids.payeTin; emp.nhfNumber=ids.nhfNumber; emp.pensionPin=ids.pensionPin; emp.nsitfNumber=ids.nsitfNumber; }); showToast('IDs saved — offline'); }}>Save IDs</button></div>
+            </div>
+          </div> : <div style={{background:'var(--bg-2)',borderRadius:8,padding:14,marginBottom:16,color:'var(--muted)',fontSize:12,lineHeight:1.7}}>
+            Country-specific tax and identity number fields are not enabled outside Nigeria. Do not store UK National Insurance numbers or US Social Security numbers here; secure, cloud-backed handling for these sensitive identifiers has not been implemented.
+          </div>}
+
+          {Object.entries(grouped).map(([cat,docs])=> <div key={cat} style={{marginBottom:14}}>
+            <div style={{fontSize:11,fontWeight:600,letterSpacing:0.06+'em',textTransform:'uppercase',opacity:0.55,marginBottom:8}}>{cat}</div>
+            {docs.map(dt=>{
+              const doc=e.documents?.[dt.key];
+              return <div key={dt.key} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:'#fff',border:'1px solid rgba(32,21,38,0.08)',borderRadius:6,marginBottom:6}}>
+                <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{dt.label} {dt.required && <span style={{color:'var(--coral)',fontSize:10}}>*</span>}</div><div style={{fontSize:11,opacity:0.6}}>{doc? `${doc.fileName} · ${doc.uploadedAt} · ${(doc.size/1024).toFixed(0)}KB · ${doc.status}` : 'Not uploaded'}</div></div>
+                {doc && doc.dataUrl && <a href={doc.dataUrl} download={doc.fileName} style={{fontSize:11,background:'var(--paper-dim)',padding:'6px 10px',borderRadius:5,textDecoration:'none',color:'var(--ink)'}}>Download</a>}
+                {doc && <button onClick={()=>{ if(confirm('Remove document?')) update(s=>{ s.employees.find(x=>x.id===e.id).documents[dt.key]=null; }); }} style={{fontSize:11,background:'transparent',border:'1px solid rgba(226,115,91,0.4)',color:'var(--coral)',padding:'6px 10px',borderRadius:5,cursor:'pointer'}}>Remove</button>}
+                <label style={{fontSize:11,background:doc?'var(--paper-dim)':'var(--coral)',color:doc?'var(--ink)':'#fff',padding:'6px 10px',borderRadius:5,cursor:'pointer'}}>
+                  {doc?'Replace':'Upload'}
+                  <input type="file" style={{display:'none'}} accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" onChange={ev=>handleUpload(dt.key, ev.target.files[0])}/>
+                </label>
+              </div>;
+            })}
+          </div>)}
+          <div style={{fontSize:11,color:'var(--muted)',marginTop:4}}>Proper order: CV → Offer → Acceptance → Deployment → JD → Medicals → IDs → Appraisals. Stored offline in browser.</div>
+          <div style={{marginTop:16,textAlign:'right'}}><button onClick={close} className="btn" style={{background:'var(--ink)',color:'#fff'}}>Close</button></div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overlay" onClick={e=>{if(e.target.classList.contains('overlay')) close();}}>
+      <div className="modal">
+        <div style={{display:'flex',justifyContent:'space-between',marginBottom:16}}><h3 style={{fontFamily:'Newsreader',fontSize:20,fontWeight:600}}>
+          {modal.type==='employee' ? (modal.data?'Edit teammate':'Add teammate') : modal.type==='review' ? 'Add review' : modal.type==='candidate' ? 'Add candidate' : modal.type==='course' ? 'New course' : modal.type==='editCourse' ? 'Edit course' : modal.type==='enroll' ? 'Enroll staff' : modal.type==='leave' ? 'Request leave' : modal.type==='attendance' ? 'Manual attendance' : modal.type==='orgUnit' ? (modal.data?'Edit department':'New department') : modal.type==='assignDept' ? 'Assign staff to department' : ''}
+        </h3><button onClick={close} style={{background:'none',border:'none',cursor:'pointer',fontSize:20,opacity:0.55}}>✕</button></div>
+
+        {modal.type==='employee' && <>
+          <div className="field"><label>Full name</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="e.g. Ada Obi"/></div>
+          <div className="field"><label>Role</label><input value={form.role} onChange={e=>setForm({...form,role:e.target.value})} placeholder="e.g. Sales Associate"/></div>
+          <div className="field"><label>Gross monthly salary ({getCurrencySymbol(state.currency || 'NGN')})</label><input type="number" value={form.gross} onChange={e=>setForm({...form,gross:e.target.value})}/></div>
+          <div className="field-row"><div className="field"><label>Bank</label><input value={form.bank} onChange={e=>setForm({...form,bank:e.target.value})}/></div><div className="field"><label>Account</label><input value={form.account} onChange={e=>setForm({...form,account:e.target.value})}/></div></div>
+          <div className="field-row"><div className="field"><label>Start date</label><input type="date" value={form.startDate} onChange={e=>setForm({...form,startDate:e.target.value})}/></div><div className="field"><label>DOB</label><input type="date" value={form.dob} onChange={e=>setForm({...form,dob:e.target.value})}/></div></div>
+          <div style={{display:'flex',gap:10,marginTop:20}}><button className="btn btn-primary" onClick={async ()=>{
+            if(!form.name||!form.role||!form.gross || Number(form.gross)<=0){ alert('Fill name, role, valid salary'); return; }
+            if(getApiBase() && getToken()){
+              try{
+                const payload={name:form.name,role:form.role,gross:Number(form.gross),bank:form.bank||'',account:form.account||'',startDate:form.startDate||'',dob:form.dob||''};
+                if(modal.data){
+                  const r=await EmployeesAPI.update(modal.data,payload);
+                  update(s=>{ const ex=s.employees.find(x=>x.id===modal.data); if(ex) Object.assign(ex,{name:r.name,role:r.role,gross:r.gross,bank:r.bank||'',account:r.account||'',startDate:r.startDate||'',dob:r.dob||''}); });
+                  showToast('Teammate updated (cloud) ✓');
+                } else {
+                  const r=await EmployeesAPI.create(payload);
+                  update(s=>{ const m=cloudEmployeeToLocal(r,s.employees.length); if(s.orgUnits&&s.orgUnits.length) m.department=s.orgUnits[s.employees.length%s.orgUnits.length].id; s.employees.push(m); });
+                  showToast('Teammate added (cloud) ✓');
+                }
+              }catch(err){ showToast('Cloud save failed: '+err.message); return; }
+            } else {
+              if(modal.data){ update(s=>{ Object.assign(s.employees.find(x=>x.id===modal.data),{name:form.name,role:form.role,gross:Number(form.gross),bank:form.bank,account:form.account,startDate:form.startDate,dob:form.dob});}); showToast('Teammate updated'); }
+              else { update(s=>{ s.employees.push({id:uid(),name:form.name,role:form.role,gross:Number(form.gross),bank:form.bank,account:form.account,startDate:form.startDate,dob:form.dob,active:true,color:AVATAR_COLORS[s.employees.length%AVATAR_COLORS.length], nin:'',payeTin:'',nhfNumber:'',pensionPin:'',nsitfNumber:'',passportPhoto:null, documents: Object.fromEntries(DOC_TYPES.map(dt=>[dt.key,null]))});}); showToast('Teammate added'); }
+            }
+            close();
+          }}>{modal.data?'Save changes':'Add teammate'}</button><button className="btn" style={{background:'transparent',border:'1px solid rgba(32,21,38,0.25)'}} onClick={close}>Cancel</button></div>
+        </>}
+
+        {modal.type==='review' && <>
+          <div className="field"><label>Teammate</label><select value={form.emp} onChange={e=>setForm({...form,emp:e.target.value})}>{state.employees.filter(e=>e.active).map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
+          <div className="field"><label>Rating</label><div style={{display:'flex',gap:4}}>{[1,2,3,4,5].map(n=><button key={n} onClick={()=>setForm({...form,rating:n})} style={{background:'none',border:'none',fontSize:22,cursor:'pointer',color: form.rating>=n ? 'var(--gold)':'rgba(32,21,38,0.2)'}}>★</button>)}</div></div>
+          <div className="field"><label>Notes</label><input value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} placeholder="What stood out?"/></div>
+          <div style={{display:'flex',gap:10,marginTop:20}}><button className="btn btn-primary" onClick={()=>{ if(!form.rating) {alert('Choose rating');return;} update(s=>{s.reviews.push({id:uid(),employeeId:form.emp,rating:form.rating,notes:form.notes,date:new Date().toISOString().slice(0,10)});}); showToast('Review saved'); close();}}>Save review</button><button className="btn" style={{background:'transparent',border:'1px solid rgba(32,21,38,0.25)'}} onClick={close}>Cancel</button></div>
+        </>}
+
+        {modal.type==='candidate' && <>
+          <div className="field"><label>Full name</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></div>
+          <div className="field"><label>Role applying for</label><input value={form.role} onChange={e=>setForm({...form,role:e.target.value})}/></div>
+          <div className="field"><label>Notes</label><input value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/></div>
+          <div style={{display:'flex',gap:10,marginTop:20}}><button className="btn btn-primary" onClick={()=>{ if(!form.name||!form.role){alert('Fill name & role');return;} update(s=>{s.candidates.push({id:uid(),name:form.name,role:form.role,stage:'Applied',appliedDate:new Date().toISOString().slice(0,10),notes:form.notes});}); showToast('Candidate added'); close();}}>Add candidate</button><button className="btn" style={{background:'transparent',border:'1px solid rgba(32,21,38,0.25)'}} onClick={close}>Cancel</button></div>
+        </>}
+        {modal.type==='course' && <>
+          <div className="field"><label>Title *</label><input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="e.g. Data Protection"/></div>
+          <div className="field-row"><div className="field"><label>Category</label><select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}><option>Compliance</option><option>Skills</option><option>Onboarding</option><option>Safety</option></select></div><div className="field"><label>Duration</label><input value={form.duration} onChange={e=>setForm({...form,duration:e.target.value})} placeholder="2h"/></div></div>
+          <div className="field"><label>Description</label><input value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="What will staff learn?"/></div>
+          <div className="field"><label><input type="checkbox" checked={form.required} onChange={e=>setForm({...form,required:e.target.checked})}/> Required for all staff</label></div>
+          <div style={{display:'flex',gap:10,marginTop:20}}><button className="btn btn-primary" onClick={()=>{
+            if(!form.title){ alert('Title required'); return;}
+            update(s=>{ s.trainings.push({id:uid(), title:form.title, category:form.category, duration:form.duration, description:form.description, required:form.required, createdAt:new Date().toISOString().slice(0,10), modules:[{id:uid(), title:'Module 1 — Overview', type:'doc', content:'Introduction', duration:'30m'}]}); });
+            showToast('Course created'); close();
+          }}>Create course</button><button className="btn" style={{background:'transparent',border:'1px solid rgba(32,21,38,0.25)'}} onClick={close}>Cancel</button></div>
+        </>}
+        {modal.type==='editCourse' && <>
+          <div className="field"><label>Title *</label><input value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/></div>
+          <div className="field-row"><div className="field"><label>Category</label><select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}><option>Compliance</option><option>Skills</option><option>Onboarding</option><option>Safety</option></select></div><div className="field"><label>Duration</label><input value={form.duration} onChange={e=>setForm({...form,duration:e.target.value})}/></div></div>
+          <div className="field"><label>Description</label><input value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></div>
+          <div className="field"><label><input type="checkbox" checked={form.required} onChange={e=>setForm({...form,required:e.target.checked})}/> Required</label></div>
+          <div style={{display:'flex',gap:10,marginTop:20}}><button className="btn btn-primary" onClick={()=>{
+            update(s=>{ const tr=s.trainings.find(x=>x.id===modal.data); Object.assign(tr,{title:form.title,category:form.category,duration:form.duration,description:form.description,required:form.required});});
+            showToast('Course updated'); close();
+          }}>Save</button><button className="btn" style={{background:'transparent',border:'1px solid rgba(32,21,38,0.25)'}} onClick={close}>Cancel</button></div>
+        </>}
+        {modal.type==='enroll' && <>
+          <div className="field"><label>Staff</label><select value={form.employeeId} onChange={e=>setForm({...form,employeeId:e.target.value})}>{state.employees.filter(e=>e.active).map(e=> <option key={e.id} value={e.id}>{e.name} — {e.role}</option>)}</select></div>
+          <div className="field"><label>Course</label><select value={form.trainingId} onChange={e=>setForm({...form,trainingId:e.target.value})}>{state.trainings.map(t=> <option key={t.id} value={t.id}>{t.title} ({t.category})</option>)}</select></div>
+          <div style={{display:'flex',gap:10,marginTop:20}}><button className="btn btn-primary" onClick={()=>{
+            if(state.enrollments.some(en=>en.employeeId===form.employeeId && en.trainingId===form.trainingId)){ alert('Already enrolled'); return; }
+            update(s=>{ s.enrollments.push({id:uid(), employeeId:form.employeeId, trainingId:form.trainingId, progress:0, completedModules:[], enrolledAt:new Date().toISOString().slice(0,10), completedAt:null, score:null, certificateId:null}); });
+            showToast('Enrolled — progress tracked'); close();
+          }}>Enroll</button><button className="btn" style={{background:'transparent',border:'1px solid rgba(32,21,38,0.25)'}} onClick={close}>Cancel</button></div>
+        </>}
+        {modal.type==='courseBuilder' && <TrainingCourseBuilder onCancel={close} onSave={(course)=>{ update(s=>{ s.trainings.push(course); }); showToast('Course created with exam and study material'); close(); }} />}
+        {modal.type==='courseView' && <CourseView tr={state.trainings.find(t=>t.id===modal.data)} state={state} update={update} showToast={showToast} close={close} />}
+        {modal.type==='leave' && <>
+          <div className="field"><label>Staff</label><select value={form.employeeId||state.employees.filter(e=>e.active)[0]?.id} onChange={e=>setForm({...form,employeeId:e.target.value})} disabled={state.currentRole==='employee'}>{state.employees.filter(e=>e.active).map(e=> <option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
+          <div className="field"><label>Leave type</label><select value={form.type||'annual'} onChange={e=>setForm({...form,type:e.target.value})}>{LEAVE_TYPES.map(t=> <option key={t.key} value={t.key}>{t.label} ({t.days}d/year)</option>)}</select></div>
+          <div className="field-row"><div className="field"><label>From</label><input type="date" value={form.from||''} onChange={e=>setForm({...form,from:e.target.value})}/></div><div className="field"><label>To</label><input type="date" value={form.to||''} onChange={e=>setForm({...form,to:e.target.value})}/></div></div>
+          <div className="field"><label>Reason</label><input value={form.reason||''} onChange={e=>setForm({...form,reason:e.target.value})} placeholder="Reason for leave"/></div>
+          <div style={{display:'flex',gap:10,marginTop:20}}><button className="btn btn-primary" onClick={()=>{
+            const empId = state.currentRole==='employee'? (state.viewingEmployeeId||state.employees[0]?.id) : (form.employeeId||state.employees[0]?.id);
+            if(!form.from || !form.to){ alert('Select dates'); return; }
+            const d1=new Date(form.from), d2=new Date(form.to); const days=Math.max(1, Math.round((d2-d1)/86400000)+1);
+            if(days<=0){ alert('Invalid dates'); return; }
+            update(s=>{ s.leaves.push({id:uid(), employeeId:empId, type:form.type||'annual', from:form.from, to:form.to, days, reason:form.reason||'', status:'pending', createdAt:new Date().toISOString().slice(0,10)}); });
+            showToast('Leave request sent — pending approval'); close();
+          }}>Submit request</button><button className="btn" style={{background:'transparent',border:'1px solid rgba(32,21,38,0.25)'}} onClick={close}>Cancel</button></div>
+        </>}
+        {modal.type==='attendance' && <>
+          <div className="field"><label>Staff</label><select value={form.employeeId||state.employees.filter(e=>e.active)[0]?.id} onChange={e=>setForm({...form,employeeId:e.target.value})}>{state.employees.filter(e=>e.active).map(e=> <option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
+          <div className="field"><label>Date</label><input type="date" value={form.date||new Date().toISOString().slice(0,10)} onChange={e=>setForm({...form,date:e.target.value})}/></div>
+          <div className="field-row"><div className="field"><label>Clock In</label><input type="time" value={form.clockIn||''} onChange={e=>setForm({...form,clockIn:e.target.value})}/></div><div className="field"><label>Clock Out</label><input type="time" value={form.clockOut||''} onChange={e=>setForm({...form,clockOut:e.target.value})}/></div></div>
+          <div className="field"><label>Status</label><select value={form.status||'present'} onChange={e=>setForm({...form,status:e.target.value})}><option value="present">Present</option><option value="late">Late</option><option value="absent">Absent</option></select></div>
+          <div style={{display:'flex',gap:10,marginTop:20}}><button className="btn btn-primary" onClick={()=>{
+            const empId=form.employeeId||state.employees[0]?.id;
+            const date=form.date||new Date().toISOString().slice(0,10);
+            if(state.attendance.some(a=>a.employeeId===empId && a.date===date)){ alert('Record exists for this date — edit via table'); return; }
+            update(s=>{ s.attendance.push({id:uid(), employeeId:empId, date, clockIn:form.clockIn||null, clockOut:form.clockOut||null, status:form.status||'present'}); });
+            showToast('Attendance saved'); close();
+          }}>Save</button><button className="btn" style={{background:'transparent',border:'1px solid rgba(32,21,38,0.25)'}} onClick={close}>Cancel</button></div>
+        </>}
+        {modal.type==='orgUnit' && <>
+          <div className="field"><label>Department name *</label><input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})} placeholder="e.g. Marketing"/></div>
+          <div className="field"><label>Head</label><select value={form.head||''} onChange={e=>setForm({...form,head:e.target.value})}><option value="">— Vacant —</option>{state.employees.filter(e=>e.active).map(e=> <option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
+          <div className="field"><label>Color</label><input type="color" value={form.color||'#4C8577'} onChange={e=>setForm({...form,color:e.target.value})} style={{height:40,padding:2}}/></div>
+          <div style={{display:'flex',gap:10,marginTop:20}}>
+            <button className="btn btn-primary" onClick={()=>{
+              if(!form.name){ alert('Name required'); return; }
+              if(modal.data){ update(s=>{ const u=s.orgUnits.find(x=>x.id===modal.data); Object.assign(u,{name:form.name,head:form.head||null,color:form.color||'#4C8577'}); }); showToast('Department updated'); }
+              else { update(s=>{ s.orgUnits.push({id:'dept'+uid(), name:form.name, head:form.head||null, color:form.color||'#4C8577'}); }); showToast('Department created'); }
+              close();
+            }}>{modal.data?'Save':'Create'}</button><button className="btn" style={{background:'transparent',border:'1px solid rgba(32,21,38,0.25)'}} onClick={close}>Cancel</button>
+          </div>
+        </>}
+        {modal.type==='assignDept' && <>
+          <div className="field"><label>Staff</label><select value={form.employeeId||state.employees[0]?.id} onChange={e=>setForm({...form,employeeId:e.target.value})}>{state.employees.map(e=> <option key={e.id} value={e.id}>{e.name} — {state.orgUnits.find(u=>u.id===e.department)?.name||'—'}</option>)}</select></div>
+          <div className="field"><label>Move to department</label><select value={form.dept||state.orgUnits[0]?.id} onChange={e=>setForm({...form,dept:e.target.value})}>{state.orgUnits.map(u=> <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
+          <div style={{display:'flex',gap:10,marginTop:20}}><button className="btn btn-primary" onClick={()=>{
+            update(s=>{ s.employees.find(e=>e.id===form.employeeId).department=form.dept; }); showToast('Assigned'); close();
+          }}>Assign</button><button className="btn" style={{background:'transparent',border:'1px solid rgba(32,21,38,0.25)'}} onClick={close}>Cancel</button></div>
+        </>}
+
+      </div>
+    </div>
+  );
+}
