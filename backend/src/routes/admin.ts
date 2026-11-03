@@ -56,6 +56,20 @@ adminRouter.get("/subscription-payment-requests", requirePlatformAdmin, async (_
   return res.json(result);
 });
 
+adminRouter.post("/subscriptions/reject-payment", requirePlatformAdmin, async (req, res) => {
+  const parsed = z.object({
+    paymentRequestId: z.string().min(1),
+    reason: z.string().trim().max(300).optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Select a valid payment request." });
+  const paymentRequest = await db.find("subscriptionPaymentRequests", parsed.data.paymentRequestId);
+  if (!paymentRequest || paymentRequest.status !== "pending") return res.status(404).json({ error: "Pending payment request not found." });
+  await db.update("subscriptionPaymentRequests", paymentRequest.id, {
+    status: "rejected", reviewedAt: new Date().toISOString(), reviewNote: parsed.data.reason || "",
+  });
+  return res.json({ ok: true, status: "rejected" });
+});
+
 adminRouter.post("/subscriptions/activate", requirePlatformAdmin, async (req, res) => {
 
   const parsed = z.object({
