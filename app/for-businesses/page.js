@@ -1,102 +1,101 @@
-const features = [
-  { number: "01", title: "HR", subtitle: "A clearer view of your people", description: "Keep employee records, onboarding documents, leave, attendance, recruitment and performance activity organised in one workspace.", items: ["Employee records", "Leave and attendance", "Hiring and onboarding", "Documents and performance"] },
-  { number: "02", title: "Payroll", subtitle: "Keep payroll work organised", description: "Prepare payroll using manual entry or supported imports, review payroll history and keep key payroll information together.", items: ["Manual payroll preparation", "Payroll history", "Country and currency settings", "Payroll reporting"] },
-  { number: "03", title: "Training", subtitle: "Help your people keep learning", description: "Create and assign learning, give employees access to course lessons and assessments, and follow learning progress.", items: ["Course library and builder", "Employee learning access", "Assessments and progress", "Training records"] },
-];
-const steps = [
-  ["Bring your people together", "Set up your organisation and keep employee information in one place."],
-  ["Organise everyday work", "Manage HR activities, prepare payroll records and coordinate employee learning."],
-  ["See what needs attention", "Use team information, records and reports to support better day-to-day decisions."],
-];
+"use client";
+
+const ink = "#241A2A";
+const muted = "#6D6370";
+const coral = "#D97762";
+const pale = "#F8F3F1";
+const green = "#4D8A70";
+
 export const metadata = {
   title: "Medash HR Suite | HR, Payroll & Employee Training",
-  description: "A practical people-management workspace for growing businesses in the UK, US and Nigeria.",
+  description: "A connected people-operations workspace for growing businesses, with HR management, payroll preparation and employee training across the UK, US and Nigeria.",
 };
+
 export default function ForBusinessesPage() {
   return (
-    <main style={{ minHeight: "100vh", background: "#FBF9F7", color: "#211A29", fontFamily: "Arial, Helvetica, sans-serif" }}>
-      <style>{`
-        * { box-sizing: border-box; }
-        html { scroll-behavior: smooth; }
-        .medash-wrap { width: min(1160px, calc(100% - 48px)); margin: 0 auto; }
-        .medash-link { text-decoration: none; transition: transform .18s ease, background .18s ease; }
-        .medash-link:hover { transform: translateY(-2px); }
-        .medash-primary { background: #D97762; color: white; padding: 14px 20px; border-radius: 9px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
-        .medash-secondary { border: 1px solid #D8D0D8; color: #211A29; padding: 13px 19px; border-radius: 9px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
-        .medash-eyebrow { color: #A34F3E; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; font-weight: 800; }
-        .medash-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 18px; }
-        .medash-card { background: white; border: 1px solid #EAE4E8; border-radius: 16px; padding: 25px; box-shadow: 0 10px 30px rgba(42,28,42,.035); }
-        @media (max-width: 820px) { .medash-grid { grid-template-columns: 1fr; } .medash-hero { grid-template-columns: 1fr !important; padding-top: 52px !important; } .medash-dashboard { max-width: 620px; width: 100%; margin: 0 auto; } }
-        @media (max-width: 520px) { .medash-wrap { width: min(100% - 32px, 1160px); } .medash-navlinks { gap: 12px !important; } .medash-navlinks a:not(.medash-primary) { display: none; } .medash-hero h1 { font-size: 43px !important; } }
-      `}</style>
-      <header style={{ position: "sticky", top: 0, zIndex: 10, background: "rgba(251,249,247,.94)", backdropFilter: "blur(14px)", borderBottom: "1px solid #EEE8EB" }}>
-        <div className="medash-wrap" style={{ minHeight: 76, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 18 }}>
-          <a href="#top" className="medash-link" style={{ display: "flex", alignItems: "center", gap: 11, color: "#211A29" }}>
-            <span style={{ width: 37, height: 37, borderRadius: "50% 50% 50% 7px", background: "#D97762", display: "grid", placeItems: "center", color: "white", fontWeight: 800, fontSize: 17 }}>M</span>
-            <span><strong style={{ display: "block", fontFamily: "Georgia, serif", fontSize: 21 }}>Medash</strong><small style={{ display: "block", color: "#6D6672", fontSize: 10, letterSpacing: 1.7, textTransform: "uppercase", marginTop: 2 }}>HR Suite</small></span>
-          </a>
-          <nav className="medash-navlinks" style={{ display: "flex", alignItems: "center", gap: 25, fontSize: 13, fontWeight: 700 }}>
-            <a className="medash-link" href="#platform" style={{ color: "#6D6672" }}>Platform</a>
-            <a className="medash-link" href="#how-it-works" style={{ color: "#6D6672" }}>How it works</a>
-            <a className="medash-link" href="#regions" style={{ color: "#6D6672" }}>Regions</a>
-            <a className="medash-link medash-primary" href="/" style={{ padding: "11px 16px" }}>Sign in <span aria-hidden="true" style={{ marginLeft: 8 }}>↗</span></a>
-          </nav>
-        </div>
+    <main style={{fontFamily:"Arial, sans-serif",color:ink,background:"#fff",overflow:"hidden"}}>
+      <header style={{maxWidth:1180,margin:"0 auto",padding:"24px 28px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:20}}>
+        <a href="#top" style={{display:"flex",alignItems:"center",gap:11,textDecoration:"none",color:ink,fontWeight:800,fontSize:21,letterSpacing:"-.6px"}}>
+          <span style={{width:35,height:35,background:coral,borderRadius:"50% 50% 50% 7px",display:"grid",placeItems:"center",color:"#fff",fontFamily:"Georgia,serif"}}>M</span>
+          <span>MEDASH <small style={{display:"block",fontSize:9,letterSpacing:2,color:muted,marginTop:2}}>HR SUITE</small></span>
+        </a>
+        <nav style={{display:"flex",alignItems:"center",gap:24,fontSize:14,flexWrap:"wrap"}}>
+          <a href="#platform" style={{color:muted,textDecoration:"none"}}>Platform</a>
+          <a href="#why-medash" style={{color:muted,textDecoration:"none"}}>Why Medash</a>
+          <a href="#global" style={{color:muted,textDecoration:"none"}}>Global readiness</a>
+          <a href="/" style={{color:ink,textDecoration:"none",fontWeight:700}}>Log in</a>
+          <a href="/?demo=1&local=1" style={{background:coral,color:"#fff",padding:"11px 17px",borderRadius:7,textDecoration:"none",fontWeight:700}}>Explore free demo</a>
+        </nav>
       </header>
-      <section id="top" className="medash-wrap medash-hero" style={{ display: "grid", gridTemplateColumns: "1.02fr .98fr", gap: 56, alignItems: "center", paddingTop: 82, paddingBottom: 88 }}>
-        <div>
-          <div className="medash-eyebrow">People operations, brought together</div>
-          <h1 style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: "clamp(46px, 5.4vw, 68px)", lineHeight: 1.04, letterSpacing: "-2.4px", fontWeight: 600, margin: "20px 0 22px", maxWidth: 640 }}>Make managing your people feel more <span style={{ color: "#D97762", fontStyle: "italic" }}>manageable.</span></h1>
-          <p style={{ color: "#6D6672", fontSize: 17, lineHeight: 1.8, maxWidth: 570, margin: 0 }}>One practical workspace for employee records, HR activity, payroll preparation and staff training — designed to help growing businesses stay organised.</p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 30 }}>
-            <a className="medash-link medash-primary" href="/" style={{ minWidth: 150 }}>Access Medash <span aria-hidden="true" style={{ marginLeft: 10 }}>↗</span></a>
-            <a className="medash-link medash-secondary" href="#platform">Explore the platform</a>
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 18, marginTop: 30, color: "#6D6672", fontSize: 12, fontWeight: 700 }}><span>✓ HR workspace</span><span>✓ Payroll records</span><span>✓ Employee learning</span></div>
-        </div>
-        <div className="medash-dashboard" style={{ background: "#211A29", borderRadius: 19, padding: 13, boxShadow: "0 30px 80px rgba(43,27,43,.2)", transform: "rotate(1deg)" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 11px 17px", color: "#F8F2F5" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 9, height: 9, borderRadius: 20, background: "#76B49D" }} /><span style={{ fontSize: 12, fontWeight: 700 }}>MEDASH HR SUITE</span></div><span style={{ color: "#BFB2C1", fontSize: 10 }}>WORKSPACE PREVIEW</span>
-          </div>
-          <div style={{ background: "#F8F6F7", borderRadius: 12, padding: 18 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 18 }}>
-              <div><div style={{ fontSize: 10, color: "#6D6672", textTransform: "uppercase", letterSpacing: 1 }}>Your workspace</div><div style={{ fontFamily: "Georgia, serif", fontSize: 23, marginTop: 4 }}>Good morning</div></div><div style={{ borderRadius: 8, background: "#FCEAE5", color: "#A34F3E", padding: "7px 9px", fontSize: 10, fontWeight: 800 }}>UK · US · NG</div>
+
+      <section id="top" style={{background:pale,padding:"72px 28px 78px"}}>
+        <div className="medash-hero-grid" style={{maxWidth:1180,margin:"0 auto",display:"grid",gridTemplateColumns:"1.02fr .98fr",gap:50,alignItems:"center"}}>
+          <div>
+            <div style={{display:"inline-flex",alignItems:"center",gap:8,color:coral,fontSize:12,fontWeight:800,letterSpacing:"1.5px",textTransform:"uppercase",marginBottom:20}}>
+              <span style={{width:7,height:7,borderRadius:9,background:green}}/> People operations, made clearer
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 9 }}>
-              {["HR","Payroll","Training"].map(label=><div key={label} style={{ background: "white", border: "1px solid #ECE6EA", borderRadius: 9, padding: "13px 10px" }}><div style={{ width: 25, height: 25, borderRadius: 7, background: "#F8E5E0", marginBottom: 10, display: "grid", placeItems: "center", color: "#A34F3E", fontSize: 11, fontWeight: 800 }}>{label[0]}</div><div style={{ fontSize: 12, fontWeight: 800 }}>{label}</div><div style={{ color: "#6D6672", fontSize: 10, marginTop: 4 }}>{label==="HR"?"People":label==="Payroll"?"Records":"Learning"}</div></div>)}
+            <h1 style={{fontFamily:"Georgia,serif",fontSize:"clamp(40px,5vw,66px)",lineHeight:1.04,letterSpacing:"-2.8px",margin:"0 0 22px",maxWidth:680,fontWeight:600}}>Run your people operations with <span style={{color:coral,fontStyle:"italic"}}>clarity and control.</span></h1>
+            <p style={{fontSize:18,lineHeight:1.7,color:muted,maxWidth:610,margin:"0 0 30px"}}>Medash HR Suite brings HR management, payroll and employee training into one organised workspace for growing businesses.</p>
+            <div style={{display:"flex",gap:13,flexWrap:"wrap"}}>
+              <a href="/?demo=1&local=1" style={{background:coral,color:"#fff",padding:"15px 22px",borderRadius:7,textDecoration:"none",fontWeight:800}}>Explore the free demo →</a>
+              <a href="/" style={{border:"1px solid #D8CDD5",color:ink,padding:"15px 22px",borderRadius:7,textDecoration:"none",fontWeight:700}}>Access your workspace</a>
             </div>
-            <div style={{ marginTop: 13, background: "white", border: "1px solid #ECE6EA", borderRadius: 9, padding: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 13 }}><strong style={{ fontSize: 12 }}>People operations</strong><span style={{ color: "#6D6672", fontSize: 10 }}>Workspace overview</span></div>
-              {["Employee information","Leave and attendance","Payroll preparation","Learning and development"].map((item,i)=><div key={item} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderTop: "1px solid #F1EDF0" }}><span style={{ width: 22, height: 22, display: "grid", placeItems: "center", borderRadius: 6, background: i===2?"#FCEAE5":"#E9F1ED", color: i===2?"#A34F3E":"#477B67", fontSize: 10, fontWeight: 800 }}>{String(i+1).padStart(2,"0")}</span><span style={{ fontSize: 11, color: "#4C4550" }}>{item}</span><span style={{ marginLeft: "auto", color: "#A69CA7", fontSize: 13 }}>›</span></div>)}
+            <p style={{fontSize:12,color:muted,marginTop:15}}>Explore sample information. No payment or account required.</p>
+          </div>
+          <div style={{background:"#fff",border:"1px solid #E9E1E7",borderRadius:15,padding:18,boxShadow:"0 24px 70px rgba(36,26,42,.10)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 8px 17px",borderBottom:"1px solid #EEE8ED"}}>
+              <div><div style={{fontWeight:800,fontSize:15}}>Workforce dashboard</div><div style={{fontSize:11,color:muted,marginTop:4}}>Illustrative product preview</div></div>
+              <span style={{background:"#F9EAE6",color:"#A34F3E",padding:"6px 9px",borderRadius:20,fontSize:10,fontWeight:800}}>SAMPLE DATA</span>
             </div>
-            <p style={{ color: "#827985", fontSize: 9, margin: "12px 0 0", lineHeight: 1.5 }}>Illustrative product preview — actual workspace content depends on your account and setup.</p>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12,padding:"17px 0"}}>
+              {[[ "Team members","48" ],[ "Payroll status","Ready" ],[ "Training courses","12" ],[ "Pending leave","03" ]].map(([label,value])=><div key={label} style={{background:pale,borderRadius:9,padding:17}}><div style={{fontSize:11,color:muted}}>{label}</div><div style={{fontSize:27,fontWeight:800,marginTop:8}}>{value}</div></div>)}
+            </div>
+            <div style={{background:ink,color:"#fff",borderRadius:9,padding:17}}>
+              <div style={{fontSize:11,color:"#D6C9D4"}}>ONE CONNECTED WORKSPACE</div>
+              <div style={{display:"flex",gap:8,marginTop:12,flexWrap:"wrap"}}>
+                {["HR","Payroll","Training"].map(x=><span key={x} style={{background:"rgba(255,255,255,.12)",padding:"9px 13px",borderRadius:6,fontSize:12,fontWeight:700}}>{x}</span>)}
+              </div>
+            </div>
           </div>
         </div>
       </section>
-      <section style={{ background: "#F0EAEE", borderTop: "1px solid #EAE2E7", borderBottom: "1px solid #EAE2E7" }}>
-        <div className="medash-wrap" style={{ padding: "24px 0", display: "flex", justifyContent: "space-between", gap: 18, flexWrap: "wrap", alignItems: "center" }}>
-          <span style={{ fontSize: 12, color: "#6D6672", fontWeight: 700 }}>A practical platform for teams operating across</span>{["UNITED KINGDOM","UNITED STATES","NIGERIA"].map(x=><span key={x} style={{ fontSize: 11, letterSpacing: 1.3, fontWeight: 800, color: "#211A29" }}>{x}</span>)}
+
+      <section id="platform" style={{maxWidth:1180,margin:"0 auto",padding:"76px 28px"}}>
+        <div style={{maxWidth:700,marginBottom:34}}>
+          <div style={{color:coral,fontSize:12,fontWeight:800,letterSpacing:"1.4px",textTransform:"uppercase"}}>The Medash platform</div>
+          <h2 style={{fontFamily:"Georgia,serif",fontSize:38,letterSpacing:"-1.3px",margin:"12px 0",fontWeight:600}}>Three essential areas. One connected suite.</h2>
+          <p style={{color:muted,lineHeight:1.7}}>Give your team a more consistent way to manage employee information, pay processes and continuous learning.</p>
+        </div>
+        <div className="medash-platform-grid" style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:18}}>
+          {[
+            ["01","HR Management","Organise employee records, onboarding documents, leave, attendance, recruitment and performance activities."],
+            ["02","Payroll","Prepare payroll, review calculations and maintain payroll history with support for local settings and manual HR review."],
+            ["03","Employee Training","Give employees access to structured learning materials, course activities, assessments and completion records."]
+          ].map(([n,title,desc])=><article key={title} style={{border:"1px solid #E9E1E7",borderRadius:11,padding:25,background:"#fff"}}>
+            <div style={{color:coral,fontWeight:800,fontSize:13}}>{n}</div><h3 style={{fontFamily:"Georgia,serif",fontSize:21,margin:"16px 0 10px"}}>{title}</h3><p style={{color:muted,fontSize:14,lineHeight:1.7,margin:0}}>{desc}</p>
+          </article>)}
         </div>
       </section>
-      <section id="platform" className="medash-wrap" style={{ paddingTop: 82, paddingBottom: 86 }}>
-        <div style={{ maxWidth: 650, marginBottom: 32 }}><div className="medash-eyebrow">One suite, three core areas</div><h2 style={{ fontFamily: "Georgia, serif", fontSize: "clamp(34px,4vw,47px)", lineHeight: 1.12, letterSpacing: "-1.2px", fontWeight: 600, margin: "13px 0" }}>The tools your people team works with, in one place.</h2><p style={{ color: "#6D6672", lineHeight: 1.8, fontSize: 15 }}>Move between HR, payroll and training without treating them as disconnected parts of the employee experience.</p></div>
-        <div className="medash-grid">{features.map(f=><article key={f.number} className="medash-card">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}><span style={{ fontSize: 11, letterSpacing: 1.4, color: "#A34F3E", fontWeight: 800 }}>AREA {f.number}</span><span style={{ width: 35, height: 35, borderRadius: 10, background: "#F9EAE6", color: "#A34F3E", display: "grid", placeItems: "center", fontWeight: 800 }}>{f.number}</span></div>
-          <h3 style={{ fontFamily: "Georgia, serif", fontSize: 29, margin: "0 0 5px" }}>{f.title}</h3><div style={{ color: "#A34F3E", fontSize: 12, fontWeight: 800, marginBottom: 14 }}>{f.subtitle}</div><p style={{ color: "#6D6672", fontSize: 13, lineHeight: 1.8, minHeight: 92 }}>{f.description}</p>
-          <ul style={{ listStyle: "none", padding: 0, margin: "18px 0 0", borderTop: "1px solid #EEE8EB" }}>{f.items.map(item=><li key={item} style={{ padding: "10px 0", borderBottom: "1px solid #F1EDF0", color: "#514A55", fontSize: 12 }}><span style={{ color: "#4D8A70", fontWeight: 800, marginRight: 9 }}>✓</span>{item}</li>)}</ul>
-        </article>)}</div>
-      </section>
-      <section id="how-it-works" style={{ background: "#211A29", color: "#F8F3F6", padding: "78px 0" }}>
-        <div className="medash-wrap"><div className="medash-eyebrow" style={{ color: "#F0A18E" }}>A simpler daily rhythm</div><h2 style={{ fontFamily: "Georgia, serif", fontSize: "clamp(34px,4vw,46px)", fontWeight: 600, letterSpacing: "-1px", margin: "13px 0 34px" }}>From scattered tasks to a clearer workflow.</h2>
-          <div className="medash-grid">{steps.map(([title,desc],i)=><div key={title} style={{ borderTop: "1px solid #594B5B", paddingTop: 20 }}><div style={{ color: "#F0A18E", fontSize: 12, fontWeight: 800, letterSpacing: 1 }}>STEP 0{i+1}</div><h3 style={{ fontFamily: "Georgia, serif", fontSize: 23, margin: "16px 0 9px" }}>{title}</h3><p style={{ color: "#C8BDCA", fontSize: 13, lineHeight: 1.8, margin: 0 }}>{desc}</p></div>)}</div>
+
+      <section id="why-medash" style={{background:ink,color:"#fff",padding:"70px 28px"}}>
+        <div className="medash-why-grid" style={{maxWidth:1180,margin:"0 auto",display:"grid",gridTemplateColumns:"1fr 1fr",gap:55,alignItems:"center"}}>
+          <div><div style={{color:"#F0A18E",fontSize:12,fontWeight:800,letterSpacing:"1.4px"}}>BUILT FOR PRACTICAL WORK</div><h2 style={{fontFamily:"Georgia,serif",fontSize:38,letterSpacing:"-1.2px",lineHeight:1.15,margin:"14px 0 18px",fontWeight:600}}>Less scattered administration. Better workforce visibility.</h2><p style={{color:"#D2C7D2",lineHeight:1.8,fontSize:15}}>Bring day-to-day people processes into a single environment, with clear areas for HR, Payroll and Training. Start with the tools your organisation needs and build from there.</p></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            {["Employee records in one place","Payroll preparation and history","Learning and course assessments","Leave and attendance workflows","Recruitment and performance tools","Role-based work areas"].map(x=><div key={x} style={{border:"1px solid rgba(255,255,255,.16)",borderRadius:8,padding:16,fontSize:13,lineHeight:1.5}}>✓ &nbsp;{x}</div>)}
+          </div>
         </div>
       </section>
-      <section id="regions" className="medash-wrap" style={{ padding: "78px 0 82px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 44, alignItems: "center" }}>
-        <div><div className="medash-eyebrow">Designed for more than one market</div><h2 style={{ fontFamily: "Georgia, serif", fontSize: 39, lineHeight: 1.15, fontWeight: 600, letterSpacing: "-1px", margin: "14px 0" }}>A workspace with regional settings.</h2><p style={{ color: "#6D6672", fontSize: 14, lineHeight: 1.9 }}>Medash includes country and currency settings for organisations working in the UK, US and Nigeria. Choose the relevant jurisdiction for your organisation and keep regional context visible in the workspace.</p></div>
-        <div style={{ background: "#F0EAEE", borderRadius: 16, padding: 25, display: "grid", gap: 12 }}>{[["GB","United Kingdom","Europe / UK"],["US","United States","US settings"],["NG","Nigeria","Nigeria settings"]].map(([code,name,label])=><div key={code} style={{ background: "white", border: "1px solid #E5DDE3", borderRadius: 10, padding: "15px 16px", display: "flex", alignItems: "center", gap: 13 }}><span style={{ width: 37, height: 37, borderRadius: 9, background: "#F9EAE6", color: "#A34F3E", display: "grid", placeItems: "center", fontWeight: 800, fontSize: 12 }}>{code}</span><span style={{ fontSize: 13, fontWeight: 800 }}>{name}</span><span style={{ marginLeft: "auto", color: "#6D6672", fontSize: 11 }}>{label}</span></div>)}</div>
+
+      <section id="global" className="medash-markets-grid" style={{maxWidth:1180,margin:"0 auto",padding:"76px 28px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:40,alignItems:"center"}}>
+        <div><div style={{color:coral,fontSize:12,fontWeight:800,letterSpacing:"1.4px"}}>INTERNATIONAL READINESS</div><h2 style={{fontFamily:"Georgia,serif",fontSize:36,letterSpacing:"-1px",margin:"12px 0",fontWeight:600}}>Designed with international businesses in mind.</h2><p style={{color:muted,lineHeight:1.8}}>Medash supports country and currency settings for organisations working across different regions. Country-specific payroll calculations and statutory requirements must be selected, reviewed and validated for the relevant jurisdiction before operational use.</p></div>
+        <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>{["United Kingdom","United States","Nigeria"].map(x=><div key={x} style={{border:"1px solid #E9E1E7",borderRadius:9,padding:"18px 20px",fontWeight:700,flex:"1 1 140px"}}>{x}<div style={{fontSize:11,color:muted,fontWeight:400,marginTop:6}}>Priority market</div></div>)}</div>
       </section>
-      <section style={{ background: "#F0EAEE", padding: "58px 0" }}><div className="medash-wrap" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 25, flexWrap: "wrap" }}><div style={{ maxWidth: 690 }}><div className="medash-eyebrow">Ready to take a closer look?</div><h2 style={{ fontFamily: "Georgia, serif", fontSize: 36, margin: "10px 0" }}>See how Medash can support your team.</h2><p style={{ color: "#6D6672", fontSize: 14, lineHeight: 1.8, margin: 0 }}>Sign in to your workspace or explore the platform overview before getting started.</p></div><a href="/" className="medash-link medash-primary">Open Medash HR Suite <span aria-hidden="true" style={{ marginLeft: 10 }}>↗</span></a></div></section>
-      <footer style={{ background: "#211A29", color: "#C8BDCA", padding: "28px 0" }}><div className="medash-wrap" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 15, flexWrap: "wrap" }}><div><strong style={{ color: "white", fontFamily: "Georgia, serif", fontSize: 19 }}>Medash HR Suite</strong><div style={{ fontSize: 11, marginTop: 5 }}>People operations for growing teams.</div></div><div style={{ fontSize: 11 }}>UK · US · Nigeria <span style={{ margin: "0 8px", color: "#796A7B" }}>•</span> © {new Date().getFullYear()} Medash</div></div></footer>
+
+      <section style={{background:"#F4E9E7",padding:"60px 28px",textAlign:"center"}}>
+        <div style={{maxWidth:760,margin:"0 auto"}}><h2 style={{fontFamily:"Georgia,serif",fontSize:36,letterSpacing:"-1px",margin:"0 0 14px",fontWeight:600}}>See how Medash works.</h2><p style={{color:muted,lineHeight:1.7,margin:"0 0 25px"}}>Explore the sample workspace before deciding whether Medash is right for your organisation.</p><a href="/?demo=1&local=1" style={{display:"inline-block",background:coral,color:"#fff",padding:"15px 24px",borderRadius:7,textDecoration:"none",fontWeight:800}}>Start your free demo →</a></div>
+      </section>
+      <footer style={{maxWidth:1180,margin:"0 auto",padding:"28px",display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap",fontSize:12,color:muted}}><span>© {new Date().getFullYear()} Medash HR Suite</span><span>HR Management · Payroll · Training</span><a href="/" style={{color:coral,textDecoration:"none",fontWeight:700}}>Client login</a></footer>
+      <style jsx>{`@media(max-width:800px){header{align-items:flex-start!important;flex-direction:column!important}header nav{gap:12px!important}.medash-hero-grid,.medash-why-grid,.medash-markets-grid{grid-template-columns:1fr!important}.medash-platform-grid{grid-template-columns:1fr!important}main section{padding-top:48px!important;padding-bottom:48px!important}}`}</style>
     </main>
   );
 }
