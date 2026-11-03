@@ -17,6 +17,15 @@ companyRouter.get("/", async (req: AuthedRequest, res) => {
   if (!company) return res.status(404).json({ error: "Company not found" });
   const countryCode = typeof company.countryCode === "string" && /^[A-Z]{2}$/.test(company.countryCode) ? company.countryCode : "NG";
   const fallback = REGIONS[countryCode] || { currency: "USD", locale: "en", timezone: "UTC" };
+  const rawSubscriptionStatus = company.subscriptionStatus || "legacy";
+  const trialStartedAt = company.trialStartedAt || (rawSubscriptionStatus === "legacy" ? company.createdAt : null);
+  const storedTrialEnd = company.trialEndsAt ? new Date(company.trialEndsAt).getTime() : null;
+  const trialStartMs = trialStartedAt ? new Date(trialStartedAt).getTime() : null;
+  const sevenDayTrialEnd = trialStartMs !== null && Number.isFinite(trialStartMs) ? trialStartMs + 7 * 24 * 60 * 60 * 1000 : null;
+  const effectiveTrialEnd = storedTrialEnd !== null && sevenDayTrialEnd !== null ? Math.min(storedTrialEnd, sevenDayTrialEnd) : (sevenDayTrialEnd ?? storedTrialEnd);
+  const subscriptionStatus = rawSubscriptionStatus === "legacy"
+    ? (effectiveTrialEnd !== null && effectiveTrialEnd > Date.now() ? "trial" : "expired")
+    : rawSubscriptionStatus;
   return res.json({
     id: company.id,
     name: company.name,
@@ -24,15 +33,9 @@ companyRouter.get("/", async (req: AuthedRequest, res) => {
     currency: company.currency || fallback.currency,
     locale: company.locale || fallback.locale,
     timezone: company.timezone || fallback.timezone,
-    subscriptionStatus: company.subscriptionStatus || "active",
-    trialStartedAt: company.trialStartedAt || null,
-    trialEndsAt: (() => {
-      const storedEnd = company.trialEndsAt ? new Date(company.trialEndsAt).getTime() : null;
-      const started = company.trialStartedAt ? new Date(company.trialStartedAt).getTime() : null;
-      const sevenDayEnd = started !== null ? started + 7 * 24 * 60 * 60 * 1000 : null;
-      const end = storedEnd !== null && sevenDayEnd !== null ? Math.min(storedEnd, sevenDayEnd) : (sevenDayEnd ?? storedEnd);
-      return end !== null && Number.isFinite(end) ? new Date(end).toISOString() : null;
-    })(),
+    subscriptionStatus,
+    trialStartedAt: trialStartedAt || null,
+    trialEndsAt: effectiveTrialEnd !== null && Number.isFinite(effectiveTrialEnd) ? new Date(effectiveTrialEnd).toISOString() : null,
     subscriptionPlan: company.subscriptionPlan || null,
     subscriptionActivatedAt: company.subscriptionActivatedAt || null,
     subscriptionEndsAt: company.subscriptionEndsAt || null,
