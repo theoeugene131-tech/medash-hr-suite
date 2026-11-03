@@ -131,9 +131,18 @@ publicTrainingRouter.post("/submit", async (req, res) => {
     const correctCount = questions.reduce((sum: number, q: any, index: number) => sum + (answers[q.id || String(index)] === q.correctIndex ? 1 : 0), 0);
     const percent = Math.round((correctCount / questions.length) * 100);
     const passed = percent >= (Number.isInteger(course.passPercent) ? course.passPercent : 70);
-    const submission = { id: "submission-" + randomBytes(12).toString("hex"), companyId: access.companyId, accessCodeId: access.id, trainingId: course.id, traineeName: parsed.data.name.trim(), email: parsed.data.email.trim().toLowerCase(), attempt: previous.length + 1, score: correctCount, total: questions.length, percent, passed, submittedAt: new Date().toISOString() };
+    const issuedAt = new Date().toISOString();
+    const certificate = passed ? {
+      id: "MEDASH-" + randomBytes(8).toString("hex").toUpperCase(),
+      traineeName: parsed.data.name.trim(),
+      email: parsed.data.email.trim().toLowerCase(),
+      courseTitle: course.title,
+      score: percent,
+      issuedAt: issuedAt.slice(0, 10),
+    } : null;
+    const submission = { id: "submission-" + randomBytes(12).toString("hex"), companyId: access.companyId, accessCodeId: access.id, trainingId: course.id, traineeName: parsed.data.name.trim(), email: parsed.data.email.trim().toLowerCase(), attempt: previous.length + 1, score: correctCount, total: questions.length, percent, passed, certificate, submittedAt: issuedAt };
     await db.insert("externalTrainingSubmissions", submission);
-    return res.json({ result: { courseTitle: course.title, traineeName: submission.traineeName, score: correctCount, total: questions.length, percent, passed, passPercent: Number.isInteger(course.passPercent) ? course.passPercent : 70, attempt: submission.attempt } });
+    return res.json({ result: { courseTitle: course.title, traineeName: submission.traineeName, score: correctCount, total: questions.length, percent, passed, passPercent: Number.isInteger(course.passPercent) ? course.passPercent : 70, attempt: submission.attempt, certificate } });
   } catch (error) {
     console.error("Public training exam submission failed:", error);
     return res.status(500).json({ error: "Could not submit your exam. Please try again." });
