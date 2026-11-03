@@ -1,5 +1,3 @@
-"use client";
-
 const ink = "#241A2A";
 const muted = "#6D6370";
 const coral = "#D97762";
