@@ -85,7 +85,7 @@ function parseGeneratedCourse(raw: string) {
   if (start < 0 || end <= start) throw new Error("The AI did not return a JSON course.");
   const value = JSON.parse(clean.slice(start, end + 1));
   if (typeof value.title !== "string" || !value.title.trim() || typeof value.materials !== "string" || !value.materials.trim()) throw new Error("The generated course was incomplete.");
-  const lessonParts = value.materials.split(/(?=MODULE\s+\\d+\s*[—-])/i).map((part: string) => part.trim()).filter(Boolean);
+  const lessonParts = value.materials.split(/(?=MODULE\s+\d+\s*[—-])/i).map((part: string) => part.trim()).filter(Boolean);
   if (lessonParts.length < 8 || lessonParts.length > 10) throw new Error("The course must contain 8 to 10 lessons.");
   for (let index = 0; index < lessonParts.length; index++) {
     const words = lessonParts[index].split(/\s+/).filter(Boolean).length;
