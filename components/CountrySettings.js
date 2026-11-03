@@ -92,6 +92,28 @@ export default function CountrySettings({ state, update, showToast, cloudMode = 
     if (showToast) showToast(`Company country saved: ${next.label}`);
   }
 
+  async function chooseCurrency(nextCurrency) {
+    if (!currencyOptions.some((item) => item.code === nextCurrency)) return;
+    if (cloudMode) {
+      try {
+        await CompanyAPI.updateRegion(code, nextCurrency);
+      } catch (error) {
+        if (showToast) showToast(error.message || "Could not save company currency to the cloud.");
+        return;
+      }
+    }
+    try {
+      const saved = loadState() || {};
+      saveState({ ...saved, countryCode: code, currency: nextCurrency, locale: region.locale, timezone: region.timezone });
+    } catch {
+      // React state below still updates if browser storage is unavailable.
+    }
+    update((s) => {
+      s.currency = nextCurrency;
+    });
+    if (showToast) showToast("Company reporting currency saved.");
+  }
+
   return (
     <section style={{ maxWidth: 1000, margin: "0 auto" }}>
       <div style={{ marginBottom: 22 }}>
@@ -107,7 +129,11 @@ export default function CountrySettings({ state, update, showToast, cloudMode = 
         <select id="medash-country" value={code} onChange={(e) => chooseCountry(e.target.value)} style={{ width: "100%", maxWidth: 460, padding: 12, background: "var(--bg)", color: "var(--paper)", border: "1px solid var(--line)", borderRadius: 7, fontSize: 14 }}>
           {countryOptions.map((item) => <option key={item.countryCode} value={item.countryCode}>{item.countryCode === "GB" ? "Europe/UK" : item.label}</option>)}
         </select>
-        <label htmlFor="medash-currency" style={{ display: "block", fontSize: 12, margin: "16px 0 8px", color: "var(--muted)" }}>Company reporting currency</label>\n        <select id="medash-currency" value={currencyOptions.some((item) => item.code === (state.currency || region.currency)) ? (state.currency || region.currency) : region.currency} onChange={(e) => chooseCurrency(e.target.value)} style={{ width: "100%", maxWidth: 460, padding: 12, background: "var(--bg)", color: "var(--paper)", border: "1px solid var(--line)", borderRadius: 7, fontSize: 14 }}>\n          {currencyOptions.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}\n        </select>\n        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginTop: 20 }}>
+        <label htmlFor="medash-currency" style={{ display: "block", fontSize: 12, margin: "16px 0 8px", color: "var(--muted)" }}>Company reporting currency</label>
+        <select id="medash-currency" value={currencyOptions.some((item) => item.code === (state.currency || region.currency)) ? (state.currency || region.currency) : region.currency} onChange={(e) => chooseCurrency(e.target.value)} style={{ width: "100%", maxWidth: 460, padding: 12, background: "var(--bg)", color: "var(--paper)", border: "1px solid var(--line)", borderRadius: 7, fontSize: 14 }}>
+          {currencyOptions.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
+        </select>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginTop: 20 }}>
           {[
             ["Currency preference", state.currency || region.currency],
             ["Date / number format", region.locale],

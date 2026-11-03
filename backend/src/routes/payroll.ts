@@ -61,7 +61,14 @@ payrollRouter.post("/manual", requireAdmin, async (req: AuthedRequest, res) => {
       return res.status(400).json({ error: "Payroll amounts must be valid non-negative numbers." });
     }
     const deductions = Number(monthlyPAYE) + Number(pensionEmployee) + Number(nhf) + Number(otherDeductions);
-    const net = netProvided === null ? Math.max(0, Number(gross) - deductions) : netProvided;
+    const calculatedNet = Math.round((Number(gross) - deductions) * 100) / 100;
+    if (calculatedNet < 0) {
+      return res.status(400).json({ error: "Employee deductions cannot exceed gross pay." });
+    }
+    if (netProvided !== null && Math.abs(netProvided - calculatedNet) > 0.01) {
+      return res.status(400).json({ error: "Net pay must equal gross pay minus employee deductions. Employer contributions are not employee deductions." });
+    }
+    const net = calculatedNet;
     cleanLines.push({
       employeeId, name: employee.name, role: employee.role,
       gross, monthlyPAYE, pensionEmployee, pensionEmployer, nhf, nsitf,
