@@ -87,7 +87,7 @@ authRouter.post("/payment-request", async (req, res) => {
   const payload = verifyToken(header.slice("Bearer ".length));
   if (!payload) return res.status(401).json({ error: "Your session has expired. Please sign in again." });
   const user = await db.find("users", payload.userId);
-  if (!user || user.active === false || user.disabled === true || user.companyId !== payload.companyId) {
+  if (!user || user.active === false || user.disabled === true || user.companyId !== payload.companyId || user.role !== payload.role || !["owner", "admin"].includes(user.role)) {
     return res.status(401).json({ error: "Your account is no longer active. Please sign in again." });
   }
   const company = await db.find("companies", user.companyId);
