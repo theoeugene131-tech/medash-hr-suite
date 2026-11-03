@@ -44,7 +44,7 @@ export default function TrainingCourseBuilder({ onSave, onCancel }) {
   function save() {
     if (!draft.title.trim()) { setError("Add a course title first."); return; }
     if (!draft.materials.trim()) { setError("Add study material before saving."); return; }
-    const lessonCount = draft.materials.split(/(?=MODULE\\s+\\d+\\s*[—-])/i).map((part) => part.trim()).filter(Boolean).length;
+    const lessonCount = draft.materials.split(/(?=MODULE\s+\\d+\s*[—-])/i).map((part) => part.trim()).filter(Boolean).length;
     if (lessonCount < 8) { setError("A professional AI course needs at least 8 clearly headed lessons. Generate a fuller course or add the missing lessons."); return; }
     if (draft.questions.length < 20) { setError("Add at least 20 assessment questions before saving this course."); return; }
     if (draft.questions.length > 25) { setError("Keep the assessment to 25 questions or fewer."); return; }
