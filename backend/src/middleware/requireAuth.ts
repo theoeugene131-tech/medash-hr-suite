@@ -13,10 +13,32 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
   }
   const payload = verifyToken(header.slice("Bearer ".length));
   if (!payload) return res.status(401).json({ error: "Invalid or expired token" });
-  req.auth = payload;
 
   try {
-    const company = await db.find("companies", payload.companyId);
+    // Revalidate the account on every request so deleted, disabled, moved, or
+    // role-changed users cannot keep access through an old JWT.
+    const user = await db.find("users", payload.userId);
+    if (!user || user.active === false || user.disabled === true) {
+      return res.status(401).json({ error: "This account is no longer active. Please sign in again." });
+    }
+    const currentEmployeeId = user.employeeId ?? null;
+    if (
+      user.id !== payload.userId ||
+      user.companyId !== payload.companyId ||
+      user.role !== payload.role ||
+      currentEmployeeId !== (payload.employeeId ?? null) ||
+      !["owner", "admin", "employee"].includes(user.role)
+    ) {
+      return res.status(401).json({ error: "Your account permissions have changed. Please sign in again." });
+    }
+    req.auth = {
+      userId: user.id,
+      companyId: user.companyId,
+      role: user.role,
+      employeeId: currentEmployeeId,
+    };
+
+    const company = await db.find("companies", user.companyId);
     if (!company) return res.status(403).json({ error: "Company account could not be found." });
     const isCompanyStatusRead = req.method === "GET" && req.path === "/";
     const now = Date.now();
