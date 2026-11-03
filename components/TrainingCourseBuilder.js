@@ -44,8 +44,12 @@ export default function TrainingCourseBuilder({ onSave, onCancel }) {
   function save() {
     if (!draft.title.trim()) { setError("Add a course title first."); return; }
     if (!draft.materials.trim()) { setError("Add study material before saving."); return; }
-    if (!draft.questions.length || draft.questions.some((q) => !q.text.trim() || q.options.some((option) => !option.trim()) || q.correctIndex < 0 || q.correctIndex > 3)) {
-      setError("Complete every question and all four options, then choose the correct answer."); return;
+    const lessonCount = draft.materials.split(/(?=MODULE\s+\d+\s*[—-])/i).map((part) => part.trim()).filter(Boolean).length;
+    if (lessonCount < 8) { setError("A professional AI course needs at least 8 clearly headed lessons. Generate a fuller course or add the missing lessons."); return; }
+    if (draft.questions.length < 20) { setError("Add at least 20 assessment questions before saving this course."); return; }
+    if (draft.questions.length > 25) { setError("Keep the assessment to 25 questions or fewer."); return; }
+    if (draft.questions.some((q) => !q.text.trim() || q.options.some((option) => !option.trim()) || new Set(q.options.map((option) => option.trim().toLowerCase())).size !== 4 || q.correctIndex < 0 || q.correctIndex > 3)) {
+      setError("Complete every question with four different options, then choose its one correct answer."); return;
     }
     const modules = draft.materials.split(/(?=MODULE\s+\d+\s*[—-])/i).map((part, index) => {
       const lines = part.trim().split("\n");
@@ -61,7 +65,7 @@ export default function TrainingCourseBuilder({ onSave, onCancel }) {
   return <div style={{ display: "grid", gap: 12, maxHeight: "72vh", overflowY: "auto", paddingRight: 3 }}>
     <div style={{ padding: 12, border: "1px solid var(--line)", borderRadius: 8, background: "var(--bg-2)" }}>
       <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 5 }}>CertifyPath course builder</div>
-      <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8 }}>Generate structured learning material and an exam with AI, then review and edit everything before saving. AI generation requires GEMINI_API_KEY on the backend; manual authoring works without it.</div>
+      <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8 }}>Generate a professional course with 8–10 substantial lessons and a 20–25 question applied assessment. Review everything before saving. AI generation requires GEMINI_API_KEY on the backend; manual authoring works without it.</div>
       <div style={{ display: "flex", gap: 6 }}>
         <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g. UK workplace data protection" style={{ ...fieldStyle, flex: 1 }} />
         <button className="btn btn-primary" disabled={busy || !topic.trim()} onClick={generate}>{busy ? "Generating…" : "Generate with AI"}</button>
@@ -73,12 +77,12 @@ export default function TrainingCourseBuilder({ onSave, onCancel }) {
       <div className="field"><label>Duration</label><input value={draft.duration} onChange={(e) => patch("duration", e.target.value)} style={fieldStyle} /></div>
     </div>
     <div className="field"><label>Description</label><input value={draft.description} onChange={(e) => patch("description", e.target.value)} style={fieldStyle} /></div>
-    <div className="field"><label>Study material *</label><textarea rows={8} value={draft.materials} onChange={(e) => patch("materials", e.target.value)} placeholder="Write training content or generate it above. Separate modules with headings such as MODULE 1 — INTRODUCTION." style={{ ...fieldStyle, resize: "vertical" }} /></div>
+    <div className="field"><label>Study material *</label><textarea rows={8} value={draft.materials} onChange={(e) => patch("materials", e.target.value)} placeholder="Write 8–10 substantial lessons or generate them above. Use headings such as MODULE 1 — INTRODUCTION." style={{ ...fieldStyle, resize: "vertical" }} /></div>
     <div className="field-row">
       <div className="field"><label>Pass mark (%)</label><input type="number" min="1" max="100" value={draft.passPercent} onChange={(e) => patch("passPercent", Math.min(100, Math.max(1, Number(e.target.value) || 1)))} style={fieldStyle} /></div>
       <div className="field"><label>Attempts before re-study</label><input type="number" min="1" max="10" value={draft.attemptsPerRound} onChange={(e) => patch("attemptsPerRound", Math.min(10, Math.max(1, Number(e.target.value) || 1)))} style={fieldStyle} /></div>
     </div>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ fontSize: 13 }}>Exam questions ({draft.questions.length})</strong><button className="btn" onClick={() => patch("questions", [...draft.questions, defaultQuestion()])}>+ Add question</button></div>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><strong style={{ fontSize: 13 }}>Assessment questions ({draft.questions.length} / minimum 20)</strong><button className="btn" onClick={() => patch("questions", [...draft.questions, defaultQuestion()])}>+ Add question</button></div>
     {draft.questions.map((q, index) => <div key={q.id} style={{ border: "1px solid var(--line)", borderRadius: 7, padding: 10, display: "grid", gap: 7 }}>
       <div style={{ display: "flex", gap: 6 }}><input value={q.text} onChange={(e) => patchQuestion(q.id, { text: e.target.value })} placeholder={`Question ${index + 1}`} style={{ ...fieldStyle, flex: 1 }} />{draft.questions.length > 1 && <button className="btn" onClick={() => patch("questions", draft.questions.filter((item) => item.id !== q.id))}>Remove</button>}</div>
       {q.options.map((option, optionIndex) => <div key={optionIndex} style={{ display: "flex", alignItems: "center", gap: 7 }}><input type="radio" name={q.id} checked={q.correctIndex === optionIndex} onChange={() => patchQuestion(q.id, { correctIndex: optionIndex })} aria-label={`Option ${optionIndex + 1} is correct`} /><input value={option} onChange={(e) => patchOption(q.id, optionIndex, e.target.value)} placeholder={`Option ${optionIndex + 1}`} style={{ ...fieldStyle, flex: 1 }} /></div>)}

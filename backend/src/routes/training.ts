@@ -73,9 +73,10 @@ publicTrainingRouter.post("/submit", async (req, res) => {
 
 trainingRouter.use(requireAuth);
 
-const GENERATED_COURSE_PROMPT = `You are an expert corporate instructional designer. Return only valid JSON with this shape:
-{"title":"string","description":"one sentence","materials":"string","passPercent":70,"attemptsPerRound":3,"questions":[{"text":"question","options":["A","B","C","D"],"correctIndex":0}]}
-Write useful, practical workplace training in plain English. Materials should contain 6 to 10 clearly labelled modules, each with substantive guidance and practical examples. Create 10 to 20 multiple-choice questions, each with exactly four options and one correctIndex from 0 to 3. Questions must be answerable from the supplied materials. Vary correct answer positions. Do not include markdown fences.`;
+const GENERATED_COURSE_PROMPT = `You are a senior corporate instructional designer creating professional training for a mixed international workforce. Return only valid JSON with this shape:
+{"title":"string","description":"two-sentence description","materials":"string","passPercent":70,"attemptsPerRound":3,"questions":[{"text":"scenario-based question","options":["A","B","C","D"],"correctIndex":0}]}
+Create 8 to 10 substantial lessons, each introduced by a heading exactly like "MODULE 1 — LESSON TITLE". Each lesson must contain at least 130 words and include: learning objective; clear explanation of the concept; step-by-step workplace practice; a realistic workplace example or scenario; common mistakes or risks; and a short learner activity or reflection. Use plain, professional English and practical detail, not slogans or repeated filler. Build a coherent progression from foundations to application and review. Avoid legal conclusions: explain that local law and company policy vary, and identify jurisdiction-specific requirements only when confident. Do not invent statutes, deadlines, penalties, or official guidance.
+Create 20 to 25 distinct multiple-choice questions. Every question must test a meaningful learning objective explicitly taught in the lessons. Use realistic workplace situations, decision-making and applied understanding; avoid trivial, vague, duplicate, trick, or meaningless questions. Each question must have exactly four plausible, distinct options and exactly one defensible correct answer. Distractors should reflect realistic mistakes, not jokes or obviously absurd choices. Vary correct answer positions. Do not reveal answers in question text. Do not include markdown fences.`;
 
 function parseGeneratedCourse(raw: string) {
   const clean = raw.trim().replace(/^\`\`\`(?:json)?\s*/i, "").replace(/\`\`\`\s*$/, "");
@@ -84,12 +85,20 @@ function parseGeneratedCourse(raw: string) {
   if (start < 0 || end <= start) throw new Error("The AI did not return a JSON course.");
   const value = JSON.parse(clean.slice(start, end + 1));
   if (typeof value.title !== "string" || !value.title.trim() || typeof value.materials !== "string" || !value.materials.trim()) throw new Error("The generated course was incomplete.");
-  if (!Array.isArray(value.questions) || value.questions.length < 1 || value.questions.length > 30) throw new Error("The generated exam was incomplete.");
+  const lessonParts = value.materials.split(/(?=MODULE\s+\d+\s*[—-])/i).map((part: string) => part.trim()).filter(Boolean);
+  if (lessonParts.length < 8 || lessonParts.length > 10) throw new Error("The course must contain 8 to 10 lessons.");
+  for (let index = 0; index < lessonParts.length; index++) {
+    const words = lessonParts[index].split(/\s+/).filter(Boolean).length;
+    if (words < 130) throw new Error(`Lesson ${index + 1} is too brief to teach the topic properly.`);
+  }
+  if (!Array.isArray(value.questions) || value.questions.length < 20 || value.questions.length > 25) throw new Error("The exam must contain 20 to 25 questions.");
   const questions = value.questions.map((q: any, index: number) => {
     if (!q || typeof q.text !== "string" || !q.text.trim() || !Array.isArray(q.options) || q.options.length !== 4 || q.options.some((o: unknown) => typeof o !== "string" || !o.trim()) || !Number.isInteger(q.correctIndex) || q.correctIndex < 0 || q.correctIndex > 3) {
       throw new Error(`Question ${index + 1} was not formatted correctly.`);
     }
-    return { id: `question-${index + 1}`, text: q.text.trim(), options: q.options.map((o: string) => o.trim()), correctIndex: q.correctIndex };
+    const options = q.options.map((o: string) => o.trim());
+    if (new Set(options.map((option: string) => option.toLowerCase())).size !== 4) throw new Error(`Question ${index + 1} contains duplicate options.`);
+    return { id: `question-${index + 1}`, text: q.text.trim(), options, correctIndex: q.correctIndex };
   });
   return {
     title: value.title.trim(),
@@ -114,7 +123,7 @@ trainingRouter.post("/generate", requireAdmin, async (req: AuthedRequest, res) =
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: `Create a complete staff training course about: ${parsed.data.topic}` }] }],
         systemInstruction: { parts: [{ text: GENERATED_COURSE_PROMPT }] },
-        generationConfig: { responseMimeType: "application/json", maxOutputTokens: 12000 },
+        generationConfig: { responseMimeType: "application/json", maxOutputTokens: 16000 },
       }),
     });
     if (!response.ok) {
