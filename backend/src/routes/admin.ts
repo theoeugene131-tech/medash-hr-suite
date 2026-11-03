@@ -84,7 +84,7 @@ adminRouter.post("/subscriptions/activate", requirePlatformAdmin, async (req, re
   const parsed = z.object({
     companyId: z.string().min(1),
     paymentRequestId: z.string().min(1).optional(),
-    plan: z.enum(["monthly", "annual"]).default("monthly"),
+    plan: z.literal("monthly").default("monthly"),
     subscriptionEndsAt: z.string().datetime().optional(),
   }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Provide a valid companyId, plan, and optional ISO subscription end date." });
@@ -105,7 +105,7 @@ adminRouter.post("/subscriptions/activate", requirePlatformAdmin, async (req, re
   const periodStart = Number.isFinite(currentEnd) && currentEnd > activatedAt.getTime()
     ? currentEnd
     : activatedAt.getTime();
-  const defaultEnd = new Date(periodStart + (parsed.data.plan === "annual" ? 365 : 30) * 24 * 60 * 60 * 1000);
+  const defaultEnd = new Date(periodStart + 30 * 24 * 60 * 60 * 1000);
   const updated = await db.update("companies", company.id, {
     subscriptionStatus: "active",
     subscriptionPlan: parsed.data.plan,
