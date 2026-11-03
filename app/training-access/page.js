@@ -80,7 +80,7 @@ export default function TrainingAccessPage() {
             <label style={{ fontSize: 13, fontWeight: 700 }}>Email address<input type="email" value={email} onChange={e => setEmail(e.target.value)} required maxLength={254} style={{ ...field, marginTop: 6 }} /></label>
             <p style={{ margin: 0, color: "#586574", fontSize: 12 }}>Your email is used to save your lesson completion and exam result.</p>
           </div>
-            return <section style={{ display: "grid", gap: 12, border: "1px solid #cbd8d4", borderRadius: 10, padding: 14, background: "#f8fbfa" }}>
+          <section style={{ display: "grid", gap: 12, border: "1px solid #cbd8d4", borderRadius: 10, padding: 14, background: "#f8fbfa" }}>
               <div><h3 style={{ margin: 0, fontSize: 18 }}>Study your lectures before the assessment</h3><p style={{ margin: "5px 0 0", color: "#586574", fontSize: 13 }}>Open each lesson, read it, and mark it complete. The assessment unlocks only after all lessons are completed.</p><p style={{ margin: "6px 0 0", color: "#286c62", fontSize: 12, fontWeight: 700 }}>{completedLessonIds.length} of {lessons.length} lessons completed</p></div>
               {lessons.length > 0 ? <>
                 <div style={{ display: "grid", gap: 7 }}>
@@ -100,8 +100,7 @@ export default function TrainingAccessPage() {
                   </div>
                 </article>
               </> : <p style={{ margin: 0, color: "#a33" }}>No lecture material has been added to this course yet. Please contact your training administrator.</p>}
-            </section>;
-          })()}
+          </section>
           {!allLessonsCompleted ? <div style={{ padding: 14, borderRadius: 9, background: "#fff7e8", border: "1px solid #ead7ad", color: "#72551c", fontSize: 13 }}>The final assessment is locked until you complete all {lessons.length} lessons.</div> : <div style={{ display: "grid", gap: 16 }}>
             <h3 style={{ margin: 0, fontSize: 18 }}>Final assessment</h3>
             {course.questions.map((q, i) => <fieldset key={q.id} style={{ margin: 0, border: "1px solid #e0e5e9", borderRadius: 10, padding: 14 }}>
@@ -110,7 +109,6 @@ export default function TrainingAccessPage() {
                 {q.options.map((option, j) => <label key={j} style={{ display: "flex", gap: 9, alignItems: "flex-start", cursor: "pointer" }}><input type="radio" name={q.id} checked={answers[q.id] === j} onChange={() => setAnswers(old => ({ ...old, [q.id]: j }))} required /> <span>{option}</span></label>)}
               </div>
             </fieldset>)}
-          </div>
           </div>}
           {allLessonsCompleted && <div style={{ display: "grid", gap: 10, borderTop: "1px solid #e0e5e9", paddingTop: 16 }}>
             <button disabled={busy || !name.trim() || !email.trim() || !course.questions.length} style={{ border: 0, borderRadius: 8, background: "#286c62", color: "#fff", padding: 12, fontWeight: 700, cursor: "pointer", opacity: busy ? 0.6 : 1 }}>{busy ? "Marking exam…" : "Submit exam"}</button>
