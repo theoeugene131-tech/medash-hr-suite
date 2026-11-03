@@ -40,7 +40,7 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
 
     const company = await db.find("companies", user.companyId);
     if (!company) return res.status(403).json({ error: "Company account could not be found." });
-    const isCompanyStatusRead = req.method === "GET" && req.path === "/";
+    const isCompanyStatusRead = req.method === "GET" && req.originalUrl.split("?")[0] === "/api/company";
     const now = Date.now();
     const trialEndsAt = company.trialEndsAt ? new Date(company.trialEndsAt).getTime() : null;
     const subscriptionEndsAt = company.subscriptionEndsAt ? new Date(company.subscriptionEndsAt).getTime() : null;
