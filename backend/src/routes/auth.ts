@@ -76,7 +76,7 @@ authRouter.post("/login", async (req, res) => {
 // A signed-in company can submit a manual payment reference even after its trial expires.
 authRouter.post("/payment-request", async (req, res) => {
   const parsed = z.object({
-    plan: z.enum(["monthly", "annual"]),
+    plan: z.literal("monthly"),
     paymentReference: z.string().trim().min(3).max(120),
     payerName: z.string().trim().min(2).max(120).optional(),
     note: z.string().trim().max(500).optional(),
