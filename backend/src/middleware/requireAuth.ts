@@ -42,7 +42,12 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
     if (!company) return res.status(403).json({ error: "Company account could not be found." });
     const isCompanyStatusRead = req.method === "GET" && req.originalUrl.split("?")[0] === "/api/company";
     const now = Date.now();
-    const trialEndsAt = company.trialEndsAt ? new Date(company.trialEndsAt).getTime() : null;
+    const storedTrialEnd = company.trialEndsAt ? new Date(company.trialEndsAt).getTime() : null;
+    const trialStart = company.trialStartedAt ? new Date(company.trialStartedAt).getTime() : null;
+    const sevenDayTrialEnd = trialStart !== null ? trialStart + 7 * 24 * 60 * 60 * 1000 : null;
+    const trialEndsAt = storedTrialEnd !== null && sevenDayTrialEnd !== null
+      ? Math.min(storedTrialEnd, sevenDayTrialEnd)
+      : (sevenDayTrialEnd ?? storedTrialEnd);
     const subscriptionEndsAt = company.subscriptionEndsAt ? new Date(company.subscriptionEndsAt).getTime() : null;
     const status = company.subscriptionStatus || "legacy";
     const trialAccess = (status === "trial" || status === "trialing") && trialEndsAt !== null && trialEndsAt > now;
