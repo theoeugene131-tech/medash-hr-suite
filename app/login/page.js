@@ -451,6 +451,23 @@ export default function Page(){
   const currentGroup=NAV_GROUPS.find(group=>group.tabs.includes(activeTabs))||NAV_GROUPS[0];
   if(activeTabs!==currentTab) setCurrentTab(activeTabs);
   function update(fn){ setState(s=>{ const ns=JSON.parse(JSON.stringify(s)); fn(ns); return ns; }); }
+  async function changeJurisdiction(nextCode){
+    if(!nextCode || nextCode===state.countryCode) return;
+    const next=regionForCountry(nextCode);
+    if(cloudMode && !['owner','admin'].includes(apiUser?.role)){
+      showToast('Only the company owner or HR admin can change the jurisdiction.');
+      return;
+    }
+    try{
+      if(cloudMode) await CompanyAPI.updateRegion(nextCode,next.currency);
+      const saved=loadState()||{};
+      saveState({...saved,countryCode:nextCode,currency:next.currency,locale:next.locale,timezone:next.timezone});
+      update(s=>{s.countryCode=nextCode;s.currency=next.currency;s.locale=next.locale;s.timezone=next.timezone;});
+      showToast('Company jurisdiction saved: '+(COUNTRY_LABELS[nextCode]||next.label||nextCode));
+    }catch(error){
+      showToast(error.message||'Could not save the company jurisdiction.');
+    }
+  }
   function showToast(m){ setToast(m); setTimeout(()=>setToast(null),2800); }
   const period=nextPeriod(state.runs);
   const activeEmployees=state.employees.filter(e=>e.active);
@@ -503,7 +520,12 @@ export default function Page(){
             <div style={{display:'flex',alignItems:'center',gap:8}}>
               <h1 style={{fontFamily:'Newsreader, serif', fontSize:22, fontWeight:600, fontStyle:'italic'}}>Medash HR Suite</h1>
               <span style={{fontSize:10,background:'rgba(237,238,242,0.08)',border:'1px solid var(--line)',padding:'2px 6px',borderRadius:20,color:'var(--muted)'}}>{state.companyName || '—'}</span>
-              <span aria-label="Active jurisdiction" title="Active jurisdiction for regional settings" style={{fontSize:11,background:'rgba(226,115,91,0.16)',border:'1px solid rgba(226,115,91,0.65)',padding:'5px 9px',borderRadius:20,color:'var(--paper)',fontWeight:700,whiteSpace:'nowrap'}}>🌍 Jurisdiction: {COUNTRY_LABELS[state.countryCode] || state.countryCode || 'Not set'}</span>
+              <label title="Choose the company's operating jurisdiction" style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:11,background:'rgba(226,115,91,0.16)',border:'1px solid rgba(226,115,91,0.65)',padding:'4px 7px',borderRadius:20,color:'var(--paper)',fontWeight:700,whiteSpace:'nowrap'}}>
+                🌍 Jurisdiction
+                <select aria-label="Company jurisdiction" value={state.countryCode||'NG'} disabled={cloudMode && !['owner','admin'].includes(apiUser?.role)} onChange={e=>changeJurisdiction(e.target.value)} style={{maxWidth:145,background:'transparent',color:'var(--paper)',border:0,fontSize:11,fontWeight:700,outline:'none',cursor:'pointer'}}>
+                  {getCountryOptions().map(country=><option key={country.countryCode} value={country.countryCode} style={{color:'#201526'}}>{country.countryCode==='GB'?'Europe/UK':country.label}</option>)}
+                </select>
+              </label>
             </div>
             <p style={{fontSize:11.5, color:'var(--muted)', marginTop:2}}>Payroll, compliance & HR for teams of 5–20</p>
             <div style={{marginTop:8,display:'flex',gap:6,alignItems:'center'}}>
@@ -1536,7 +1558,7 @@ function AuthScreen({authForm,setAuthForm,onAuth,showToast}){
         {f.mode==='signup' && <p style={{fontSize:12,color:'#4C8577',margin:'-6px 0 14px',fontWeight:700}}>New companies receive a 7-day free trial of HR, Payroll and Training.</p>}
         <form onSubmit={submit}>
           {f.mode==='signup' && <><div className="field"><label>Company name</label><input value={f.companyName} onChange={e=>setAuthForm({...f,companyName:e.target.value})} placeholder="e.g. GreenField Ltd"/></div>
-          <div className="field"><label>Company country</label><select value={f.countryCode||"NG"} onChange={e=>setAuthForm({...f,countryCode:e.target.value})}>{getCountryOptions().map(country=><option key={country.countryCode} value={country.countryCode}>{country.countryCode==="GB"?"Europe/UK":country.label}</option>)}</select></div>
+          <div className="field"><label>Company jurisdiction (where your company operates)</label><select value={f.countryCode||"NG"} onChange={e=>setAuthForm({...f,countryCode:e.target.value})}>{getCountryOptions().map(country=><option key={country.countryCode} value={country.countryCode}>{country.countryCode==="GB"?"Europe/UK":country.label}</option>)}</select></div>
           <div className="field"><label>Your name</label><input value={f.name} onChange={e=>setAuthForm({...f,name:e.target.value})} placeholder="e.g. Ada Obi"/></div></>}
           <div className="field"><label>Email</label><input value={f.email} onChange={e=>setAuthForm({...f,email:e.target.value})} placeholder="you@company.com"/></div>
           <div className="field"><label>Password (8+ chars)</label><input type="password" value={f.password} onChange={e=>setAuthForm({...f,password:e.target.value})}/></div>
