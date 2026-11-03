@@ -96,7 +96,13 @@ adminRouter.post("/subscriptions/activate", requirePlatformAdmin, async (req, re
     }
   }
   const activatedAt = new Date();
-  const defaultEnd = new Date(activatedAt.getTime() + (parsed.data.plan === "annual" ? 365 : 30) * 24 * 60 * 60 * 1000);
+  const currentEnd = company.subscriptionStatus === "active" && company.subscriptionEndsAt
+    ? new Date(company.subscriptionEndsAt).getTime()
+    : 0;
+  const periodStart = Number.isFinite(currentEnd) && currentEnd > activatedAt.getTime()
+    ? currentEnd
+    : activatedAt.getTime();
+  const defaultEnd = new Date(periodStart + (parsed.data.plan === "annual" ? 365 : 30) * 24 * 60 * 60 * 1000);
   const updated = await db.update("companies", company.id, {
     subscriptionStatus: "active",
     subscriptionPlan: parsed.data.plan,
