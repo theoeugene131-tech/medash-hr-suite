@@ -83,6 +83,23 @@ export default function PlatformAdminPage() {
     }
   }
 
+  async function rejectPayment(requestItem) {
+    const reason = window.prompt("Reason for rejecting this payment reference (optional):", "");
+    if (reason === null) return;
+    setBusy(true); setMessage("");
+    try {
+      await request("/api/admin/subscriptions/reject-payment", "POST", {
+        paymentRequestId: requestItem.id, reason,
+      });
+      setMessage("Payment request rejected for " + requestItem.companyName + ".");
+      await loadCompanies();
+    } catch (error) {
+      setMessage(error.message || "Could not reject payment request.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <main style={{ minHeight: "100vh", background: "#241623", color: "#EDEEF2", padding: "32px 20px", fontFamily: "Arial, sans-serif" }}>
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
@@ -123,7 +140,7 @@ export default function PlatformAdminPage() {
                   <td style={{ padding: 12, borderTop: "1px solid #4A3447", wordBreak: "break-all" }}>{item.paymentReference}</td>
                   <td style={{ padding: 12, borderTop: "1px solid #4A3447" }}>{item.payerName || "—"}</td>
                   <td style={{ padding: 12, borderTop: "1px solid #4A3447" }}>{dateLabel(item.createdAt)}</td>
-                  <td style={{ padding: 12, borderTop: "1px solid #4A3447" }}><button type="button" disabled={busy} onClick={() => approvePayment(item)} style={{ padding: "8px 10px", border: 0, borderRadius: 6, background: "#4C8577", color: "#fff", cursor: busy ? "wait" : "pointer", whiteSpace: "nowrap" }}>Verify & activate</button></td>
+                  <td style={{ padding: 12, borderTop: "1px solid #4A3447" }}><div style={{ display: "flex", gap: 6 }}><button type="button" disabled={busy} onClick={() => approvePayment(item)} style={{ padding: "8px 10px", border: 0, borderRadius: 6, background: "#4C8577", color: "#fff", cursor: busy ? "wait" : "pointer", whiteSpace: "nowrap" }}>Verify & activate</button><button type="button" disabled={busy} onClick={() => rejectPayment(item)} style={{ padding: "8px 10px", border: "1px solid #9b5b5b", borderRadius: 6, background: "transparent", color: "#f2b5b5", cursor: busy ? "wait" : "pointer" }}>Reject</button></div></td>
                 </tr>)}
                 {paymentRequests.length === 0 && <tr><td colSpan={7} style={{ padding: 18, color: "#B39FB0", textAlign: "center" }}>No pending payment requests.</td></tr>}
               </tbody>
