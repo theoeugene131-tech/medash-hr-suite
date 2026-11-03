@@ -32,8 +32,9 @@ const TAB_LABELS = {
 const COUNTRY_LABELS = { NG:'Nigeria', GB:'Europe/UK', UK:'Europe/UK', US:'United States' };
 const NAV_GROUPS = [
   { key:'overview', label:'Home', description:'Your HR workspace at a glance: team activity, key people information and items that need attention.', tabs:['overview'] },
-  { key:'hr', label:'HR Workspace', description:'Manage team records, onboarding documents, training, leave, attendance, org chart, hiring, reviews and employee profiles.', tabs:['team','docs','training','leave','attendance','org','reviews','hiring','myprofile'] },
-  { key:'payroll', label:'Payroll & Compliance', description:'Enter or import payroll, review payroll history and reports, and set your country. Statutory estimates are paused pending validation.', tabs:['runpayroll','history','regulatory','compliance','reports','settings'] }
+  { key:'hr', label:'HR', description:'Manage people, employee records, onboarding documents, leave, attendance, performance, hiring and employee profiles.', tabs:['team','docs','leave','attendance','org','reviews','hiring','myprofile'] },
+  { key:'payroll', label:'Payroll', description:'Prepare and review payroll, maintain payroll history, reports and country-specific compliance settings.', tabs:['runpayroll','history','regulatory','compliance','reports','settings'] },
+  { key:'training', label:'Training', description:'Build, organise and deliver employee learning, course materials, assessments and external training.', tabs:['training'] }
 ];
 function visibleTabs(role){
   if(role==='employee') return ['myprofile','training','leave','attendance'];
