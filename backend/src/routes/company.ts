@@ -26,7 +26,13 @@ companyRouter.get("/", async (req: AuthedRequest, res) => {
     timezone: company.timezone || fallback.timezone,
     subscriptionStatus: company.subscriptionStatus || "active",
     trialStartedAt: company.trialStartedAt || null,
-    trialEndsAt: company.trialEndsAt || null,
+    trialEndsAt: (() => {
+      const storedEnd = company.trialEndsAt ? new Date(company.trialEndsAt).getTime() : null;
+      const started = company.trialStartedAt ? new Date(company.trialStartedAt).getTime() : null;
+      const sevenDayEnd = started !== null ? started + 7 * 24 * 60 * 60 * 1000 : null;
+      const end = storedEnd !== null && sevenDayEnd !== null ? Math.min(storedEnd, sevenDayEnd) : (sevenDayEnd ?? storedEnd);
+      return end !== null && Number.isFinite(end) ? new Date(end).toISOString() : null;
+    })(),
     subscriptionPlan: company.subscriptionPlan || null,
     subscriptionActivatedAt: company.subscriptionActivatedAt || null,
     subscriptionEndsAt: company.subscriptionEndsAt || null,
