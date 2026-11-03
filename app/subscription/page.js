@@ -27,7 +27,7 @@ export default function SubscriptionPage() {
     try {
       await api("/api/auth/payment-request", {
         method: "POST",
-        body: { plan, paymentReference: reference.trim(), payerName: payerName.trim(), note: note.trim() },
+        body: { plan, paymentReference: reference.trim(), ...(payerName.trim() ? { payerName: payerName.trim() } : {}), note: note.trim() },
       });
       setMessage("Your payment reference has been submitted. Medash will verify it manually and activate your company subscription after confirmation.");
       setReference(""); setNote("");
@@ -50,7 +50,7 @@ export default function SubscriptionPage() {
           <strong>How manual activation works</strong>
           <ol style={{ color: "#58616b", lineHeight: 1.8, paddingLeft: 20, marginBottom: 0 }}>
             <li>Choose a monthly or annual subscription.</li>
-            <li>Make payment using the payment instructions supplied by Medash.</li>
+            <li>Contact Medash using the public website contact details to confirm the current price and payment instructions before paying.</li>
             <li>Enter your payment reference below.</li>
             <li>Medash checks the payment and activates your company access.</li>
           </ol>
@@ -58,7 +58,7 @@ export default function SubscriptionPage() {
         {!signedIn ? <div>
           <p style={{ lineHeight: 1.6 }}>Please sign in with your company owner or administrator account before submitting a payment reference.</p>
           <a href="/login" style={{ display: "inline-block", background: "#E2735B", color: "#fff", padding: "12px 17px", borderRadius: 7, textDecoration: "none", fontWeight: 700 }}>Sign in</a>
-        </div> : <form onSubmit={submit} style={{ display: "grid", gap: 13 }}>
+        </div> : !["owner", "admin"].includes(user?.role) ? <p style={{ color: "#a12d27", lineHeight: 1.6 }}>Only your company owner or administrator can submit a subscription payment reference. Please contact your company administrator.</p> : <form onSubmit={submit} style={{ display: "grid", gap: 13 }}>
           <label style={{ fontWeight: 700, fontSize: 13 }}>Subscription term
             <select value={plan} onChange={e => setPlan(e.target.value)} style={inputStyle}>
               <option value="monthly">Monthly · 30 days</option>
