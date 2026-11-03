@@ -934,7 +934,7 @@ function Training({state,update,setModal,showToast}){
           {canManageTraining && <button className="btn btn-primary" disabled={alreadyAdded} onClick={()=>{
             const lessonModules=template.materials.split(/(?=MODULE\s+\d+\s*[—-])/i).map((part,index)=>{
               const lines=part.trim().split("\n");
-              const title=(lines[0]||'').trim()||'Lesson '+(index+1);
+              const title=(lines[0]||'').replace(/^MODULE\s+\d+\s*[—-]\s*/i,'').trim()||'Lesson '+(index+1);
               return {id:'module-'+Math.random().toString(36).slice(2,8),title,type:'doc',content:lines.slice(1).join("\n").trim(),duration:'20m'};
             }).filter(module=>module.content);
             const course={...template,id:'course-'+Math.random().toString(36).slice(2,10),createdAt:new Date().toISOString().slice(0,10),required:false,libraryKey:template.key,questions:template.questions.map(q=>({...q,id:'question-'+Math.random().toString(36).slice(2,9)})),modules:[...lessonModules,{id:'quiz-'+Math.random().toString(36).slice(2,8),title:'Final assessment',type:'quiz',content:template.questions.length+' questions · '+template.passPercent+'% pass mark',duration:'30m'}]};
