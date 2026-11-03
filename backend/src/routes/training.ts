@@ -31,6 +31,43 @@ publicTrainingRouter.post("/course", async (req, res) => {
   }
 });
 
+publicTrainingRouter.post("/lesson-complete", async (req, res) => {
+  const parsed = z.object({
+    code: z.string().min(1).max(24),
+    email: z.string().trim().email().max(254),
+    lessonId: z.string().min(1).max(200),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Enter a valid email and select a lesson." });
+  const code = cleanAccessCode(parsed.data.code);
+  const email = parsed.data.email.trim().toLowerCase();
+  try {
+    const access = await db.findByField("trainingAccessCodes", "code", code);
+    if (!access || access.revokedAt) return res.status(404).json({ error: "This access code is invalid or has been disabled." });
+    const record = await db.findForCompany("companyState", access.companyId, access.companyId);
+    const state = record?.state as Record<string, any> | undefined;
+    const course = Array.isArray(state?.trainings) ? state!.trainings.find((item: any) => item.id === access.trainingId) : null;
+    const lesson = Array.isArray(course?.modules) ? course.modules.find((item: any) => item.id === parsed.data.lessonId && item.type !== "quiz") : null;
+    if (!lesson) return res.status(404).json({ error: "This lesson is not part of the shared course." });
+    const progress = (await db.table("externalTrainingProgress", access.companyId)) as any[];
+    const existing = progress.find((item) => item.accessCodeId === access.id && item.email === email && item.lessonId === lesson.id);
+    if (!existing) {
+      await db.insert("externalTrainingProgress", {
+        id: "progress-" + randomBytes(12).toString("hex"),
+        companyId: access.companyId,
+        accessCodeId: access.id,
+        trainingId: course.id,
+        email,
+        lessonId: lesson.id,
+        completedAt: new Date().toISOString(),
+      });
+    }
+    return res.json({ completed: true });
+  } catch (error) {
+    console.error("Public training lesson progress failed:", error);
+    return res.status(500).json({ error: "Could not save lesson progress. Please try again." });
+  }
+});
+
 publicTrainingRouter.post("/submit", async (req, res) => {
   const parsed = z.object({
     code: z.string().min(1).max(24),
@@ -48,6 +85,14 @@ publicTrainingRouter.post("/submit", async (req, res) => {
     const course = Array.isArray(state?.trainings) ? state!.trainings.find((item: any) => item.id === access.trainingId) : null;
     const questions = Array.isArray(course?.questions) ? course.questions : [];
     if (!course || !questions.length) return res.status(404).json({ error: "This course has no exam available yet." });
+    const lessons = Array.isArray(course.modules) ? course.modules.filter((module: any) => module.type !== "quiz") : [];
+    if (!lessons.length) return res.status(400).json({ error: "This course has no study lessons. Contact your training administrator." });
+    const completedLessonIds = new Set(((await db.table("externalTrainingProgress", access.companyId)) as any[])
+      .filter((item) => item.accessCodeId === access.id && item.email === parsed.data.email.trim().toLowerCase())
+      .map((item) => item.lessonId));
+    if (lessons.some((lesson: any) => !completedLessonIds.has(lesson.id))) {
+      return res.status(403).json({ error: "Complete every study lesson before submitting the final assessment." });
+    }
     const answers = parsed.data.answers;
     const allowedKeys = new Set(questions.map((q: any, index: number) => q.id || String(index)));
     if (Object.keys(answers).some((key) => !allowedKeys.has(key))) return res.status(400).json({ error: "Your answers do not match this exam." });
