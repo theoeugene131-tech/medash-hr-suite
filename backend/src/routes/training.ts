@@ -12,6 +12,30 @@ function cleanAccessCode(value: unknown) {
   return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 24);
 }
 
+function getCourseLessons(course: any) {
+  const source = Array.isArray(course?.modules) ? course.modules.filter((module: any) => module.type !== "quiz") : [];
+  const candidates = source.length ? source : (typeof course?.materials === "string" ? [{ id: "materials", title: "Study material", content: course.materials, duration: "Self-paced" }] : []);
+  const lessons: any[] = [];
+  for (const module of candidates) {
+    const content = String(module.content || "");
+    const parts = content.split(/(?=MODULE\s+\d+\s*[—-])/i).map((part: string) => part.trim()).filter(Boolean);
+    const shouldSplit = parts.length > 1 || (candidates.length === 1 && parts.length === 1 && /^MODULE\s+\d+\s*[—-]/i.test(parts[0]));
+    const chunks = shouldSplit ? parts : [content];
+    chunks.forEach((part: string, index: number) => {
+      const firstLine = part.split("\n")[0] || "";
+      const title = shouldSplit ? firstLine.replace(/^MODULE\s+\d+\s*[—-]?\s*/i, "").trim() : (module.title || `Lesson ${lessons.length + 1}`);
+      lessons.push({
+        id: shouldSplit ? `${module.id || "lesson"}-${index + 1}` : (module.id || String(lessons.length)),
+        title: title || `Lesson ${lessons.length + 1}`,
+        type: module.type || "doc",
+        content: shouldSplit ? part.split("\n").slice(1).join("\n").trim() || part : content,
+        duration: module.duration || "Self-paced",
+      });
+    });
+  }
+  return lessons;
+}
+
 publicTrainingRouter.post("/course", async (req, res) => {
   const code = cleanAccessCode(req.body?.code);
   if (!code) return res.status(400).json({ error: "Enter a training access code." });
@@ -23,7 +47,7 @@ publicTrainingRouter.post("/course", async (req, res) => {
     const course = Array.isArray(state?.trainings) ? state!.trainings.find((item: any) => item.id === access.trainingId) : null;
     if (!course) return res.status(404).json({ error: "This course is no longer available." });
     const questions = Array.isArray(course.questions) ? course.questions : [];
-    const modules = Array.isArray(course.modules) ? course.modules.filter((module: any) => module.type !== "quiz").map((module: any, index: number) => ({ id: module.id || String(index), title: module.title || `Lesson ${index + 1}`, type: module.type || "doc", content: module.content || "", duration: module.duration || "Self-paced" })) : [];
+    const modules = getCourseLessons(course);
     return res.json({ course: { id: course.id, title: course.title, description: course.description || "", materials: course.materials || modules.map((module: any) => module.content).filter(Boolean).join("\n\n") || "", modules, passPercent: Number.isInteger(course.passPercent) ? course.passPercent : 70, questions: questions.map((q: any, index: number) => ({ id: q.id || String(index), text: q.text, options: q.options })) } });
   } catch (error) {
     console.error("Public training course lookup failed:", error);
@@ -46,7 +70,7 @@ publicTrainingRouter.post("/lesson-complete", async (req, res) => {
     const record = await db.findForCompany("companyState", access.companyId, access.companyId);
     const state = record?.state as Record<string, any> | undefined;
     const course = Array.isArray(state?.trainings) ? state!.trainings.find((item: any) => item.id === access.trainingId) : null;
-    const lesson = Array.isArray(course?.modules) ? course.modules.find((item: any) => item.id === parsed.data.lessonId && item.type !== "quiz") : null;
+    const lesson = getCourseLessons(course).find((item: any) => item.id === parsed.data.lessonId);
     if (!lesson) return res.status(404).json({ error: "This lesson is not part of the shared course." });
     const progress = (await db.table("externalTrainingProgress", access.companyId)) as any[];
     const existing = progress.find((item) => item.accessCodeId === access.id && item.email === email && item.lessonId === lesson.id);
@@ -85,7 +109,7 @@ publicTrainingRouter.post("/submit", async (req, res) => {
     const course = Array.isArray(state?.trainings) ? state!.trainings.find((item: any) => item.id === access.trainingId) : null;
     const questions = Array.isArray(course?.questions) ? course.questions : [];
     if (!course || !questions.length) return res.status(404).json({ error: "This course has no exam available yet." });
-    const lessons = Array.isArray(course.modules) ? course.modules.filter((module: any) => module.type !== "quiz") : [];
+    const lessons = getCourseLessons(course);
     if (!lessons.length) return res.status(400).json({ error: "This course has no study lessons. Contact your training administrator." });
     const completedLessonIds = new Set(((await db.table("externalTrainingProgress", access.companyId)) as any[])
       .filter((item) => item.accessCodeId === access.id && item.email === parsed.data.email.trim().toLowerCase())
