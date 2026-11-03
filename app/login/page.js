@@ -277,7 +277,7 @@ export default function Page(){
       // On hosted deployments, only the clearly labelled sample-data demo may
       // run without a company login. Customers cannot switch the live app offline
       // to bypass the server-side subscription gate.
-      if(hostedDeployment) return params.get('demo')==='1' && params.get('local')==='1';
+      if(hostedDeployment) return params.get('demo')==='1' && params.get('local')==='1' && params.get('freshDemo')==='1';
       return params.get('local')==='1' || localStorage.getItem(CLOUD_OFF_KEY)==='1';
     }catch{ return false; }
   }
