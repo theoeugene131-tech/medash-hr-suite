@@ -437,7 +437,7 @@ export default function Page(){
   if (trialExpired) {
     return <div style={{minHeight:"100vh",background:"#241623",color:"#EDEEF2",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <div style={{maxWidth:520,width:"100%",background:"#EDEEF2",color:"#201526",borderRadius:12,padding:32}}>
-        <h1 style={{fontFamily:"Newsreader,serif",fontSize:28,marginTop:0}}>{subscription?.subscriptionStatus==="active" ? "Your Medash subscription has expired" : "Your Medash trial has ended"}</h1>
+        <h1 style={{fontFamily:"Newsreader,serif",fontSize:28,marginTop:0}}>{subscriptionStatus==="active" ? "Your Medash subscription has expired" : subscriptionStatus==="suspended" ? "Your Medash subscription is suspended" : "Your Medash trial has ended"}</h1>
         <p style={{fontSize:14,lineHeight:1.7}}>Your company’s access is paused. Submit your payment reference for manual verification. Your company data has not been deleted.</p>
         <a href="/subscription" style={{display:"inline-block",background:"#E2735B",color:"#fff",padding:"12px 16px",borderRadius:7,textDecoration:"none",fontWeight:600}}>Submit payment for verification</a>
         <button onClick={()=>{clearSession();setApiUser(null);setSubscription(null);}} style={{display:"block",marginTop:14,background:"transparent",border:"1px solid rgba(32,21,38,.2)",padding:"10px 14px",borderRadius:7,cursor:"pointer"}}>Log out</button>
