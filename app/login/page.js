@@ -273,7 +273,7 @@ export default function Page(){
   function cloudOff(){
     try{
       const params=new URLSearchParams(window.location.search);
-      const hostedDeployment=window.location.hostname.endsWith('.vercel.app');
+      const hostedDeployment=!['localhost','127.0.0.1','::1'].includes(window.location.hostname);
       // On hosted deployments, only the clearly labelled sample-data demo may
       // run without a company login. Customers cannot switch the live app offline
       // to bypass the server-side subscription gate.
@@ -1533,6 +1533,7 @@ function AuthScreen({authForm,setAuthForm,onAuth,showToast}){
         <div style={{display:'flex',gap:8,marginBottom:16}}>
           {['login','signup'].map(m=><button key={m} onClick={()=>setAuthForm({...f,mode:m})} style={{flex:1,padding:'9px 0',borderRadius:6,border:'1px solid rgba(32,21,38,0.2)',background:f.mode===m?'#201526':'transparent',color:f.mode===m?'#fff':'#201526',fontSize:13,fontWeight:600,cursor:'pointer',textTransform:'capitalize'}}>{m==='login'?'Log in':'New company'}</button>)}
         </div>
+        {f.mode==='signup' && <p style={{fontSize:12,color:'#4C8577',margin:'-6px 0 14px',fontWeight:700}}>New companies receive a 7-day free trial of HR, Payroll and Training.</p>}
         <form onSubmit={submit}>
           {f.mode==='signup' && <><div className="field"><label>Company name</label><input value={f.companyName} onChange={e=>setAuthForm({...f,companyName:e.target.value})} placeholder="e.g. GreenField Ltd"/></div>
           <div className="field"><label>Company country</label><select value={f.countryCode||"NG"} onChange={e=>setAuthForm({...f,countryCode:e.target.value})}>{getCountryOptions().map(country=><option key={country.countryCode} value={country.countryCode}>{country.countryCode==="GB"?"Europe/UK":country.label}</option>)}</select></div>
