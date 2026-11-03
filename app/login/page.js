@@ -1444,18 +1444,16 @@ function CourseView({tr, state, update, showToast, close}){
   const isEmployee=state.currentRole==='employee';
   const myId=state.viewingEmployeeId||state.employees[0]?.id;
   const modules=Array.isArray(tr.modules)?tr.modules:[];
-  const quizQuestions=Array.isArray(tr.questions)&&tr.questions.length
+  const quizQuestions=Array.isArray(tr.questions)
     ? tr.questions.map((q,i)=>({q:q.text,a:q.options,correct:q.correctIndex,id:q.id||String(i)}))
-    : [
-      {q:'What is the primary goal of this training?', a:['Compliance','Entertainment','None'], correct:0, id:'0'},
-      {q:'Pass mark for the test is?', a:['50%','70%','90%'], correct:1, id:'1'},
-      {q:'Who should report an incident?', a:['Only manager','Everyone','No one'], correct:1, id:'2'},
-    ];
+    : [];
   const passPercent=Number.isInteger(tr.passPercent)?tr.passPercent:70;
   const enrollment=state.enrollments.find(e=>e.employeeId===myId && e.trainingId===tr.id);
   const completedModules=enrollment?.completedModules||[];
   const activeModule=modules.find(m=>m.id===activeModuleId)||null;
   const lessons=modules.filter(m=>m.type!=='quiz');
+  const allLessonsCompleted=lessons.length>0 && lessons.every(m=>completedModules.includes(m.id));
+  const hasValidExam=quizQuestions.length>0 && quizQuestions.every(q=>q.q && Array.isArray(q.a) && q.a.length===4 && Number.isInteger(q.correct) && q.correct>=0 && q.correct<4);
   function markLessonComplete(module){
     update(s=>{
       let record=s.enrollments.find(e=>e.employeeId===myId && e.trainingId===tr.id);
@@ -1464,8 +1462,8 @@ function CourseView({tr, state, update, showToast, close}){
         s.enrollments.push(record);
       }
       if(!record.completedModules.includes(module.id)) record.completedModules.push(module.id);
-      const total=modules.length||1;
-      record.progress=Math.round(100*record.completedModules.length/total);
+      const total=lessons.length||1;
+      record.progress=Math.round(100*record.completedModules.filter(id=>lessons.some(item=>item.id===id)).length/total);
     });
     showToast('Lesson marked as completed');
   }
@@ -1486,7 +1484,7 @@ function CourseView({tr, state, update, showToast, close}){
       update(s=>{
         let my=s.enrollments.find(e=>e.employeeId===myId && e.trainingId===tr.id);
         if(!my){ my={id:uid(),employeeId:myId,trainingId:tr.id,progress:0,completedModules:[],enrolledAt:new Date().toISOString().slice(0,10),completedAt:null,score:null,certificateId:null}; s.enrollments.push(my); }
-        modules.forEach(m=>{if(!my.completedModules.includes(m.id)) my.completedModules.push(m.id);});
+        lessons.forEach(m=>{if(!my.completedModules.includes(m.id)) my.completedModules.push(m.id);});
         my.progress=100;
         my.score=pct;
         if(!my.certificateId){ const cid=uid(); my.certificateId=cid; my.completedAt=new Date().toISOString().slice(0,10); s.certificates.push({id:cid,employeeId:myId,trainingId:tr.id,issuedAt:my.completedAt,score:pct}); }
@@ -1512,7 +1510,7 @@ function CourseView({tr, state, update, showToast, close}){
           <div style={{fontSize:13,fontWeight:600}}>{m.title}</div>
           <div style={{fontSize:11,opacity:0.65,marginTop:3}}>{m.duration||'Lesson'} · {isQuiz?'Assessment':(m.type||'Lesson')}</div>
         </div>
-        <button onClick={()=>{setActiveModuleId(m.id);setShowResult(null);}} style={{background:isQuiz?'#E2735B':'#286c62',color:'#fff',border:0,padding:'7px 10px',borderRadius:5,fontSize:11,cursor:'pointer'}}>{isQuiz?'Open test':'Study lesson'}</button>
+        <button disabled={isQuiz && !allLessonsCompleted} onClick={()=>{setActiveModuleId(m.id);setShowResult(null);}} style={{background:isQuiz?'#E2735B':'#286c62',color:'#fff',border:0,padding:'7px 10px',borderRadius:5,fontSize:11,cursor:isQuiz&&!allLessonsCompleted?'not-allowed':'pointer',opacity:isQuiz&&!allLessonsCompleted?0.45:1}}>{isQuiz?(!allLessonsCompleted?'Complete lessons first':'Open test'):'Study lesson'}</button>
       </div>;
     })}
     {activeModule && activeModule.type!=='quiz' && <section style={{marginTop:14,background:'#fff',border:'1px solid #D9E1DE',borderRadius:9,padding:16}}>
@@ -1526,8 +1524,8 @@ function CourseView({tr, state, update, showToast, close}){
     </section>}
     {activeModule?.type==='quiz' && <div id="quiz-area" style={{marginTop:14,background:'#fff',border:'1px solid #ddd',borderRadius:8,padding:14}}>
       <div style={{fontWeight:700,fontSize:14}}>Final assessment — {tr.title}</div>
-      <div style={{fontSize:11,color:'var(--muted)',marginTop:4,marginBottom:8}}>Pass mark: {passPercent}%. You can review the lessons above before submitting.</div>
-      {showResult ? <div style={{textAlign:'center',padding:16}}><div style={{fontSize:22,fontWeight:700,color:showResult.pass?'#4C8577':'#E2735B'}}>{showResult.pass?'Passed ✓':'Not passed yet'}</div><div style={{fontFamily:'monospace',fontSize:22,marginTop:6}}>{showResult.score}%</div><div style={{fontSize:11,opacity:0.7,marginTop:4}}>{showResult.pass?'Course completed. Your certificate is available in Training → Certificates.':'Review the lessons and try again.'}</div><button onClick={()=>{setShowResult(null);setAnswers({});}} style={{marginTop:10,background:'#201526',color:'#fff',border:0,padding:'8px 12px',borderRadius:6,fontSize:12,cursor:'pointer'}}>Retake test</button></div>:
+      <div style={{fontSize:11,color:'var(--muted)',marginTop:4,marginBottom:8}}>Pass mark: {passPercent}%. Complete every lesson before the assessment unlocks.</div>
+      {!allLessonsCompleted ? <div style={{padding:14,background:'#FFF7E8',border:'1px solid #E8D5A8',borderRadius:7,fontSize:12,color:'#72551C'}}>The final assessment is locked. Complete all {lessons.length} lessons first ({completedModules.filter(id=>lessons.some(item=>item.id===id)).length}/{lessons.length} completed).</div> : !hasValidExam ? <div style={{padding:14,background:'#FFF2F0',border:'1px solid #F0C5BE',borderRadius:7,fontSize:12,color:'#8C3B28'}}>This course does not yet have a valid assessment. Please contact your training administrator.</div> : showResult ? <div style={{textAlign:'center',padding:16}}><div style={{fontSize:22,fontWeight:700,color:showResult.pass?'#4C8577':'#E2735B'}}>{showResult.pass?'Passed ✓':'Not passed yet'}</div><div style={{fontFamily:'monospace',fontSize:22,marginTop:6}}>{showResult.score}%</div><div style={{fontSize:11,opacity:0.7,marginTop:4}}>{showResult.pass?'Course completed. Your certificate is available in Training → Certificates.':'Review the lessons and try again.'}</div><button onClick={()=>{setShowResult(null);setAnswers({});}} style={{marginTop:10,background:'#201526',color:'#fff',border:0,padding:'8px 12px',borderRadius:6,fontSize:12,cursor:'pointer'}}>Retake test</button></div>:
       <div>
         {quizQuestions.map((qq,i)=><div key={qq.id||i} style={{marginTop:10,padding:10,background:'rgba(32,21,38,0.04)',borderRadius:6}}>
           <div style={{fontSize:12,fontWeight:600}}>{i+1}. {qq.q}</div>
