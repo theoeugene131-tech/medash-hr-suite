@@ -43,17 +43,16 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
     const isCompanyStatusRead = req.method === "GET" && req.originalUrl.split("?")[0] === "/api/company";
     const now = Date.now();
     const storedTrialEnd = company.trialEndsAt ? new Date(company.trialEndsAt).getTime() : null;
-    const trialStart = company.trialStartedAt ? new Date(company.trialStartedAt).getTime() : null;
-    const sevenDayTrialEnd = trialStart !== null ? trialStart + 7 * 24 * 60 * 60 * 1000 : null;
+    const trialStartValue = company.trialStartedAt || (status === "legacy" ? company.createdAt : null);
+    const trialStart = trialStartValue ? new Date(trialStartValue).getTime() : null;
+    const sevenDayTrialEnd = trialStart !== null && Number.isFinite(trialStart) ? trialStart + 7 * 24 * 60 * 60 * 1000 : null;
     const trialEndsAt = storedTrialEnd !== null && sevenDayTrialEnd !== null
       ? Math.min(storedTrialEnd, sevenDayTrialEnd)
       : (sevenDayTrialEnd ?? storedTrialEnd);
     const subscriptionEndsAt = company.subscriptionEndsAt ? new Date(company.subscriptionEndsAt).getTime() : null;
-    const status = company.subscriptionStatus || "legacy";
-    const trialAccess = (status === "trial" || status === "trialing") && trialEndsAt !== null && trialEndsAt > now;
+    const trialAccess = (status === "trial" || status === "trialing" || status === "legacy") && trialEndsAt !== null && trialEndsAt > now;
     const paidAccess = status === "active" && (subscriptionEndsAt === null || subscriptionEndsAt > now);
-    const legacyAccess = status === "legacy";
-    if (!isCompanyStatusRead && !trialAccess && !paidAccess && !legacyAccess) {
+    if (!isCompanyStatusRead && !trialAccess && !paidAccess) {
       const message = status === "trial" || status === "trialing"
         ? "Your 7-day Medash trial has ended. Submit your payment reference for manual verification to restore access."
         : "Your Medash subscription has expired or is suspended. Submit your payment reference for manual verification to restore access.";
