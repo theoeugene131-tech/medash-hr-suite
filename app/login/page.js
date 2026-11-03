@@ -5,7 +5,7 @@ import { normalizeKey, isValidFormat, getStoredKey, saveLicense, clearLicense } 
 import { getApiBase, setApiBaseOverride, getToken, setSession, getSessionUser, clearSession, AuthAPI, EmployeesAPI, PayrollAPI, CompanyAPI, CompanyStateAPI, api } from "@/lib/api";
 import CountrySettings from "@/components/CountrySettings";
 import TrainingCourseBuilder from "@/components/TrainingCourseBuilder";
-import { formatMoney, formatDate, getCurrencySymbol, getCountryOptions } from "@/lib/region";
+import { formatMoney, formatDate, getCurrencySymbol, getCountryOptions, regionForCountry } from "@/lib/region";
 import { libraryTemplates } from "@/lib/training-starter-courses";
 
 const AVATAR_COLORS = ['#E2735B','#C9A227','#4C8577','#7D6BA6','#B3563F','#3E7C8A'];
