@@ -12,6 +12,30 @@ function cleanAccessCode(value: unknown) {
   return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 24);
 }
 
+function getCourseLessons(course: any) {
+  const source = Array.isArray(course?.modules) ? course.modules.filter((module: any) => module.type !== "quiz") : [];
+  const candidates = source.length ? source : (typeof course?.materials === "string" ? [{ id: "materials", title: "Study material", content: course.materials, duration: "Self-paced" }] : []);
+  const lessons: any[] = [];
+  for (const module of candidates) {
+    const content = String(module.content || "");
+    const parts = content.split(/(?=MODULE\s+\d+\s*[—-])/i).map((part: string) => part.trim()).filter(Boolean);
+    const shouldSplit = parts.length > 1 || (candidates.length === 1 && parts.length === 1 && /^MODULE\s+\d+\s*[—-]/i.test(parts[0]));
+    const chunks = shouldSplit ? parts : [content];
+    chunks.forEach((part: string, index: number) => {
+      const firstLine = part.split("\n")[0] || "";
+      const title = shouldSplit ? firstLine.replace(/^MODULE\s+\d+\s*[—-]?\s*/i, "").trim() : (module.title || `Lesson ${lessons.length + 1}`);
+      lessons.push({
+        id: shouldSplit ? `${module.id || "lesson"}-${index + 1}` : (module.id || String(lessons.length)),
+        title: title || `Lesson ${lessons.length + 1}`,
+        type: module.type || "doc",
+        content: shouldSplit ? part.split("\n").slice(1).join("\n").trim() || part : content,
+        duration: module.duration || "Self-paced",
+      });
+    });
+  }
+  return lessons;
+}
+
 publicTrainingRouter.post("/course", async (req, res) => {
   const code = cleanAccessCode(req.body?.code);
   if (!code) return res.status(400).json({ error: "Enter a training access code." });
@@ -23,11 +47,48 @@ publicTrainingRouter.post("/course", async (req, res) => {
     const course = Array.isArray(state?.trainings) ? state!.trainings.find((item: any) => item.id === access.trainingId) : null;
     if (!course) return res.status(404).json({ error: "This course is no longer available." });
     const questions = Array.isArray(course.questions) ? course.questions : [];
-    const modules = Array.isArray(course.modules) ? course.modules.filter((module: any) => module.type !== "quiz").map((module: any, index: number) => ({ id: module.id || String(index), title: module.title || `Lesson ${index + 1}`, type: module.type || "doc", content: module.content || "", duration: module.duration || "Self-paced" })) : [];
+    const modules = getCourseLessons(course);
     return res.json({ course: { id: course.id, title: course.title, description: course.description || "", materials: course.materials || modules.map((module: any) => module.content).filter(Boolean).join("\n\n") || "", modules, passPercent: Number.isInteger(course.passPercent) ? course.passPercent : 70, questions: questions.map((q: any, index: number) => ({ id: q.id || String(index), text: q.text, options: q.options })) } });
   } catch (error) {
     console.error("Public training course lookup failed:", error);
     return res.status(500).json({ error: "Could not load this course. Please try again." });
+  }
+});
+
+publicTrainingRouter.post("/lesson-complete", async (req, res) => {
+  const parsed = z.object({
+    code: z.string().min(1).max(24),
+    email: z.string().trim().email().max(254),
+    lessonId: z.string().min(1).max(200),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Enter a valid email and select a lesson." });
+  const code = cleanAccessCode(parsed.data.code);
+  const email = parsed.data.email.trim().toLowerCase();
+  try {
+    const access = await db.findByField("trainingAccessCodes", "code", code);
+    if (!access || access.revokedAt) return res.status(404).json({ error: "This access code is invalid or has been disabled." });
+    const record = await db.findForCompany("companyState", access.companyId, access.companyId);
+    const state = record?.state as Record<string, any> | undefined;
+    const course = Array.isArray(state?.trainings) ? state!.trainings.find((item: any) => item.id === access.trainingId) : null;
+    const lesson = getCourseLessons(course).find((item: any) => item.id === parsed.data.lessonId);
+    if (!lesson) return res.status(404).json({ error: "This lesson is not part of the shared course." });
+    const progress = (await db.table("externalTrainingProgress", access.companyId)) as any[];
+    const existing = progress.find((item) => item.accessCodeId === access.id && item.email === email && item.lessonId === lesson.id);
+    if (!existing) {
+      await db.insert("externalTrainingProgress", {
+        id: "progress-" + randomBytes(12).toString("hex"),
+        companyId: access.companyId,
+        accessCodeId: access.id,
+        trainingId: course.id,
+        email,
+        lessonId: lesson.id,
+        completedAt: new Date().toISOString(),
+      });
+    }
+    return res.json({ completed: true });
+  } catch (error) {
+    console.error("Public training lesson progress failed:", error);
+    return res.status(500).json({ error: "Could not save lesson progress. Please try again." });
   }
 });
 
@@ -48,6 +109,14 @@ publicTrainingRouter.post("/submit", async (req, res) => {
     const course = Array.isArray(state?.trainings) ? state!.trainings.find((item: any) => item.id === access.trainingId) : null;
     const questions = Array.isArray(course?.questions) ? course.questions : [];
     if (!course || !questions.length) return res.status(404).json({ error: "This course has no exam available yet." });
+    const lessons = getCourseLessons(course);
+    if (!lessons.length) return res.status(400).json({ error: "This course has no study lessons. Contact your training administrator." });
+    const completedLessonIds = new Set(((await db.table("externalTrainingProgress", access.companyId)) as any[])
+      .filter((item) => item.accessCodeId === access.id && item.email === parsed.data.email.trim().toLowerCase())
+      .map((item) => item.lessonId));
+    if (lessons.some((lesson: any) => !completedLessonIds.has(lesson.id))) {
+      return res.status(403).json({ error: "Complete every study lesson before submitting the final assessment." });
+    }
     const answers = parsed.data.answers;
     const allowedKeys = new Set(questions.map((q: any, index: number) => q.id || String(index)));
     if (Object.keys(answers).some((key) => !allowedKeys.has(key))) return res.status(400).json({ error: "Your answers do not match this exam." });
@@ -72,6 +141,43 @@ publicTrainingRouter.post("/submit", async (req, res) => {
 });
 
 trainingRouter.use(requireAuth);
+
+trainingRouter.post("/lesson-complete", async (req: AuthedRequest, res) => {
+  const parsed = z.object({
+    trainingId: z.string().min(1).max(200),
+    moduleId: z.string().min(1).max(200),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Select a valid course lesson." });
+  if (req.auth!.role !== "employee" || !req.auth!.employeeId) {
+    return res.status(403).json({ error: "Only the enrolled employee can record their lesson completion." });
+  }
+  try {
+    const record = await db.findForCompany("companyState", req.auth!.companyId, req.auth!.companyId);
+    const state = record?.state as Record<string, any> | undefined;
+    const training = Array.isArray(state?.trainings) ? state!.trainings.find((item: any) => item.id === parsed.data.trainingId) : null;
+    const lesson = Array.isArray(training?.modules) ? training.modules.find((item: any) => item.id === parsed.data.moduleId && item.type !== "quiz") : null;
+    if (!training || !lesson) return res.status(404).json({ error: "This lesson is not part of the selected course." });
+    const employee = await db.findForCompany("employees", req.auth!.employeeId, req.auth!.companyId);
+    if (!employee) return res.status(403).json({ error: "Your employee account could not be verified." });
+    const enrollments = Array.isArray(state!.enrollments) ? [...state!.enrollments] : [];
+    let enrollment = enrollments.find((item: any) => item.employeeId === employee.id && item.trainingId === training.id);
+    if (!enrollment) {
+      enrollment = { id: "enrollment-" + randomBytes(10).toString("hex"), employeeId: employee.id, trainingId: training.id, progress: 0, completedModules: [], enrolledAt: new Date().toISOString().slice(0, 10), completedAt: null, score: null, certificateId: null };
+      enrollments.push(enrollment);
+    }
+    const completed = new Set(Array.isArray(enrollment.completedModules) ? enrollment.completedModules : []);
+    completed.add(lesson.id);
+    enrollment.completedModules = [...completed];
+    const lessonModules = training.modules.filter((item: any) => item.type !== "quiz");
+    enrollment.progress = Math.round(100 * lessonModules.filter((item: any) => completed.has(item.id)).length / Math.max(1, lessonModules.length));
+    state!.enrollments = enrollments;
+    await db.updateForCompany("companyState", req.auth!.companyId, req.auth!.companyId, { state, updatedAt: new Date().toISOString() });
+    return res.json({ completed: true, progress: enrollment.progress });
+  } catch (error) {
+    console.error("Training lesson completion failed:", error);
+    return res.status(500).json({ error: "Could not save lesson completion. Please try again." });
+  }
+});
 
 const GENERATED_COURSE_PROMPT = `You are a senior corporate instructional designer creating professional training for a mixed international workforce. Return only valid JSON with this shape:
 {"title":"string","description":"two-sentence description","materials":"string","passPercent":70,"attemptsPerRound":3,"questions":[{"text":"scenario-based question","options":["A","B","C","D"],"correctIndex":0}]}
@@ -202,6 +308,12 @@ trainingRouter.post("/submit", async (req: AuthedRequest, res) => {
       if (!employeeId) return res.status(403).json({ error: "Your employee account could not be verified." });
       const employee = await db.findForCompany("employees", employeeId, req.auth!.companyId);
       if (!employee) return res.status(403).json({ error: "Your employee account could not be verified." });
+      const lessonModules = Array.isArray(training.modules) ? training.modules.filter((module: any) => module.type !== "quiz") : [];
+      const enrollment = (Array.isArray(state!.enrollments) ? state!.enrollments : []).find((item: any) => item.employeeId === employeeId && item.trainingId === training.id);
+      const completed = new Set(Array.isArray(enrollment?.completedModules) ? enrollment.completedModules : []);
+      if (!lessonModules.length || lessonModules.some((module: any) => !completed.has(module.id))) {
+        return res.status(403).json({ error: "Complete every course lesson before submitting the final assessment." });
+      }
     }
     const questions = training.questions as Array<{ id?: string; text: string; options: string[]; correctIndex: number }>;
     const allowedKeys = new Set(questions.map((question, index) => question.id || String(index)));
@@ -227,7 +339,7 @@ trainingRouter.post("/submit", async (req: AuthedRequest, res) => {
       enrollment.lastScore = percent;
       enrollment.score = percent;
       if (passed) {
-        const moduleIds = Array.isArray(training.modules) ? training.modules.map((module: any) => module.id).filter(Boolean) : [];
+        const moduleIds = Array.isArray(training.modules) ? training.modules.filter((module: any) => module.type !== "quiz").map((module: any) => module.id).filter(Boolean) : [];
         enrollment.completedModules = [...new Set([...(Array.isArray(enrollment.completedModules) ? enrollment.completedModules : []), ...moduleIds])];
         enrollment.progress = 100;
         enrollment.completedAt = enrollment.completedAt || new Date().toISOString().slice(0, 10);

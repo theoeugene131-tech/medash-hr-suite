@@ -6,6 +6,7 @@ import { getApiBase, setApiBaseOverride, getToken, setSession, getSessionUser, c
 import CountrySettings from "@/components/CountrySettings";
 import TrainingCourseBuilder from "@/components/TrainingCourseBuilder";
 import { formatMoney, formatDate, getCurrencySymbol, getCountryOptions } from "@/lib/region";
+import { libraryTemplates } from "@/lib/training-starter-courses";
 
 const AVATAR_COLORS = ['#E2735B','#C9A227','#4C8577','#7D6BA6','#B3563F','#3E7C8A'];
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -848,57 +849,6 @@ function printCertificate({companyName, cert, employee, training}){
   </div></body></html>`);
   w.document.close();
 }
-const libraryTemplates = [
-  {key:'workplace-conduct-v1',title:'Workplace Conduct & Respect',category:'Compliance',duration:'45m',description:'A practical introduction to respectful conduct, reporting concerns, anti-harassment principles, and professional communication.',passPercent:70,attemptsPerRound:3,materials:`MODULE 1 — RESPECTFUL WORKPLACE
-Treat colleagues, customers, and contractors with dignity. Avoid bullying, harassment, discrimination, threats, and humiliating behaviour. Professional disagreement is acceptable; personal attacks are not.
-
-MODULE 2 — EVERYDAY CONDUCT
-Communicate clearly, respect boundaries, protect confidential discussions, and follow reasonable workplace policies. Managers should model the standards they expect from their teams.
-
-MODULE 3 — RAISING A CONCERN
-Record relevant facts and dates, preserve appropriate evidence, and use the reporting channel described in your organisation's policy. Escalate urgent safety risks promptly. Do not retaliate against someone who raises a concern in good faith.`,questions:[
-    {id:'q1',text:'Which behaviour best supports a respectful workplace?',options:['Personal attacks during disagreement','Treating colleagues with dignity','Sharing private staff details','Ignoring reports of harassment'],correctIndex:1},
-    {id:'q2',text:'What is a useful first step when documenting a concern?',options:['Post it publicly','Delete related messages','Record relevant facts and dates','Confront everyone involved'],correctIndex:2},
-    {id:'q3',text:'How should a good-faith report be treated?',options:['With protection from retaliation','As automatic proof of guilt','As a reason to reduce shifts','As information to spread widely'],correctIndex:0}
-  ]},
-  {key:'data-protection-v1',title:'Data Protection & Confidentiality',category:'Data protection',duration:'50m',description:'Core practices for handling employee, customer, and business information responsibly across different jurisdictions.',passPercent:70,attemptsPerRound:3,materials:`MODULE 1 — HANDLE DATA LAWFULLY
-Collect personal information only for a clear business purpose and follow the laws and policies that apply to your organisation. Use only the information needed for the task.
-
-MODULE 2 — KEEP INFORMATION SECURE
-Use approved systems, strong unique passwords, multi-factor authentication where available, and access only the records required for your role. Do not send confidential files to personal accounts without authorisation.
-
-MODULE 3 — RETENTION AND INCIDENTS
-Follow approved retention and deletion schedules. If information is lost, sent to the wrong recipient, or accessed without permission, report it promptly through your organisation's incident process. Do not conceal or independently investigate a suspected breach beyond your role.`,questions:[
-    {id:'q1',text:'What is data minimisation?',options:['Collect every available detail','Keep all data forever','Collect only what is needed for a clear purpose','Share data with every team'],correctIndex:2},
-    {id:'q2',text:'You receive a file containing personal data you do not need. What should you do?',options:['Forward it to friends','Follow company policy and avoid unnecessary access or sharing','Upload it to a public drive','Keep a personal copy'],correctIndex:1},
-    {id:'q3',text:'What should you do after discovering a possible data incident?',options:['Delete all evidence immediately','Wait until someone asks','Post details online','Report it promptly using the approved process'],correctIndex:3}
-  ]},
-  {key:'cybersecurity-v1',title:'Cybersecurity Awareness',category:'Compliance',duration:'40m',description:'Recognise phishing, protect accounts and devices, and respond safely to suspicious activity.',passPercent:70,attemptsPerRound:3,materials:`MODULE 1 — RECOGNISE PHISHING
-Be cautious with unexpected urgency, unusual payment requests, unfamiliar links, attachments, and messages that ask for credentials. Verify requests using a trusted contact method rather than replying to the suspicious message.
-
-MODULE 2 — PROTECT ACCOUNTS AND DEVICES
-Use unique passwords and multi-factor authentication where available. Lock your screen, install approved updates, and use authorised software and storage. Never share passwords or one-time authentication codes.
-
-MODULE 3 — RESPOND TO SUSPICIOUS ACTIVITY
-Do not click further or forward suspicious attachments. Report the message or incident to the designated IT/security contact. If you entered credentials, report it immediately and follow instructions to secure the account.`,questions:[
-    {id:'q1',text:'An unexpected email demands an urgent password reset through a link. What is safest?',options:['Click immediately','Reply with your password','Verify through a trusted channel and report if suspicious','Forward it to all colleagues'],correctIndex:2},
-    {id:'q2',text:'Which practice best protects accounts?',options:['Reuse one password everywhere','Share one-time codes with a caller','Store passwords in a public note','Use unique passwords and multi-factor authentication'],correctIndex:3},
-    {id:'q3',text:'What should you do if you entered your password on a suspicious site?',options:['Report it immediately and follow account-security steps','Ignore it','Delete the email and tell nobody','Wait a month'],correctIndex:0}
-  ]},
-  {key:'health-safety-v1',title:'Workplace Health & Safety Basics',category:'Safety',duration:'45m',description:'Identify common hazards, follow safe procedures, and report incidents and near misses.',passPercent:70,attemptsPerRound:3,materials:`MODULE 1 — IDENTIFY HAZARDS
-Look for unsafe conditions such as blocked exits, spills, damaged equipment, poor ergonomics, and exposed cables. Follow local safety instructions and do not undertake work you are not trained or authorised to perform.
-
-MODULE 2 — PREVENT HARM
-Use required protective equipment, keep walkways clear, use equipment as instructed, and take appropriate breaks. Stop and seek guidance when a task appears unsafe.
-
-MODULE 3 — REPORT AND RESPOND
-Follow your workplace emergency plan. Report injuries, hazards, and near misses promptly, even when no one appears to be hurt. In an emergency, alert the appropriate responders and do not put yourself at unnecessary risk.`,questions:[
-    {id:'q1',text:'What should you do if you find a blocked emergency exit?',options:['Ignore it if the office is quiet','Report it and follow the procedure to clear the hazard safely','Put boxes in front of it','Wait for an inspection'],correctIndex:1},
-    {id:'q2',text:'Should a near miss be reported?',options:['Only if equipment is destroyed','Never','Yes, promptly using the workplace process','Only at year end'],correctIndex:2},
-    {id:'q3',text:'What is the safest response to a task you are not trained to do?',options:['Attempt it quickly','Copy a colleague without asking','Disable safety equipment','Stop and seek appropriate guidance'],correctIndex:3}
-  ]}
-];
-
 function Training({state,update,setModal,showToast}){
   const [tab,setTab]=useState('catalog');
   const [externalResults,setExternalResults]=useState([]);
@@ -982,7 +932,12 @@ function Training({state,update,setModal,showToast}){
           </div>
           <details><summary style={{cursor:'pointer',fontSize:12,fontWeight:600}}>Preview study material and exam topics</summary><div style={{whiteSpace:'pre-wrap',fontSize:12,lineHeight:1.6,marginTop:8}}>{template.materials}</div><ul style={{fontSize:12,lineHeight:1.6}}>{template.questions.map((q,i)=><li key={i}>{q.text}</li>)}</ul></details>
           {canManageTraining && <button className="btn btn-primary" disabled={alreadyAdded} onClick={()=>{
-            const course={...template,id:'course-'+Math.random().toString(36).slice(2,10),createdAt:new Date().toISOString().slice(0,10),required:false,libraryKey:template.key,questions:template.questions.map(q=>({...q,id:'question-'+Math.random().toString(36).slice(2,9)})),modules:[{id:'module-'+Math.random().toString(36).slice(2,8),title:'Study material',type:'doc',content:template.materials,duration:'30m'},{id:'quiz-'+Math.random().toString(36).slice(2,8),title:'Final assessment',type:'quiz',content:template.questions.length+' questions · '+template.passPercent+'% pass mark',duration:'20m'}]};
+            const lessonModules=template.materials.split(/(?=MODULE\s+\d+\s*[—-])/i).map((part,index)=>{
+              const lines=part.trim().split("\n");
+              const title=(lines[0]||'').replace(/^MODULE\s+\d+\s*[—-]\s*/i,'').trim()||'Lesson '+(index+1);
+              return {id:'module-'+Math.random().toString(36).slice(2,8),title,type:'doc',content:lines.slice(1).join("\n").trim(),duration:'20m'};
+            }).filter(module=>module.content);
+            const course={...template,id:'course-'+Math.random().toString(36).slice(2,10),createdAt:new Date().toISOString().slice(0,10),required:false,libraryKey:template.key,questions:template.questions.map(q=>({...q,id:'question-'+Math.random().toString(36).slice(2,9)})),modules:[...lessonModules,{id:'quiz-'+Math.random().toString(36).slice(2,8),title:'Final assessment',type:'quiz',content:template.questions.length+' questions · '+template.passPercent+'% pass mark',duration:'30m'}]};
             update(state=>{state.trainings.push(course);});showToast('Starter course added to your company catalogue');
           }}>{alreadyAdded?'Already added':'Add to my courses'}</button>}
         </div>;
@@ -1444,19 +1399,22 @@ function CourseView({tr, state, update, showToast, close}){
   const isEmployee=state.currentRole==='employee';
   const myId=state.viewingEmployeeId||state.employees[0]?.id;
   const modules=Array.isArray(tr.modules)?tr.modules:[];
-  const quizQuestions=Array.isArray(tr.questions)&&tr.questions.length
+  const quizQuestions=Array.isArray(tr.questions)
     ? tr.questions.map((q,i)=>({q:q.text,a:q.options,correct:q.correctIndex,id:q.id||String(i)}))
-    : [
-      {q:'What is the primary goal of this training?', a:['Compliance','Entertainment','None'], correct:0, id:'0'},
-      {q:'Pass mark for the test is?', a:['50%','70%','90%'], correct:1, id:'1'},
-      {q:'Who should report an incident?', a:['Only manager','Everyone','No one'], correct:1, id:'2'},
-    ];
+    : [];
   const passPercent=Number.isInteger(tr.passPercent)?tr.passPercent:70;
   const enrollment=state.enrollments.find(e=>e.employeeId===myId && e.trainingId===tr.id);
   const completedModules=enrollment?.completedModules||[];
   const activeModule=modules.find(m=>m.id===activeModuleId)||null;
   const lessons=modules.filter(m=>m.type!=='quiz');
-  function markLessonComplete(module){
+  const allLessonsCompleted=lessons.length>0 && lessons.every(m=>completedModules.includes(m.id));
+  const hasValidExam=quizQuestions.length>0 && quizQuestions.every(q=>q.q && Array.isArray(q.a) && q.a.length===4 && Number.isInteger(q.correct) && q.correct>=0 && q.correct<4);
+  async function markLessonComplete(module){
+    if(state.currentRole==='employee' && getApiBase() && getToken()){
+      try{
+        await api('/api/training/lesson-complete',{method:'POST',body:{trainingId:tr.id,moduleId:module.id}});
+      }catch(err){ showToast('Lesson progress could not be saved: '+err.message); return; }
+    }
     update(s=>{
       let record=s.enrollments.find(e=>e.employeeId===myId && e.trainingId===tr.id);
       if(!record){
@@ -1464,8 +1422,8 @@ function CourseView({tr, state, update, showToast, close}){
         s.enrollments.push(record);
       }
       if(!record.completedModules.includes(module.id)) record.completedModules.push(module.id);
-      const total=modules.length||1;
-      record.progress=Math.round(100*record.completedModules.length/total);
+      const total=lessons.length||1;
+      record.progress=Math.round(100*record.completedModules.filter(id=>lessons.some(item=>item.id===id)).length/total);
     });
     showToast('Lesson marked as completed');
   }
@@ -1486,7 +1444,7 @@ function CourseView({tr, state, update, showToast, close}){
       update(s=>{
         let my=s.enrollments.find(e=>e.employeeId===myId && e.trainingId===tr.id);
         if(!my){ my={id:uid(),employeeId:myId,trainingId:tr.id,progress:0,completedModules:[],enrolledAt:new Date().toISOString().slice(0,10),completedAt:null,score:null,certificateId:null}; s.enrollments.push(my); }
-        modules.forEach(m=>{if(!my.completedModules.includes(m.id)) my.completedModules.push(m.id);});
+        lessons.forEach(m=>{if(!my.completedModules.includes(m.id)) my.completedModules.push(m.id);});
         my.progress=100;
         my.score=pct;
         if(!my.certificateId){ const cid=uid(); my.certificateId=cid; my.completedAt=new Date().toISOString().slice(0,10); s.certificates.push({id:cid,employeeId:myId,trainingId:tr.id,issuedAt:my.completedAt,score:pct}); }
@@ -1512,7 +1470,7 @@ function CourseView({tr, state, update, showToast, close}){
           <div style={{fontSize:13,fontWeight:600}}>{m.title}</div>
           <div style={{fontSize:11,opacity:0.65,marginTop:3}}>{m.duration||'Lesson'} · {isQuiz?'Assessment':(m.type||'Lesson')}</div>
         </div>
-        <button onClick={()=>{setActiveModuleId(m.id);setShowResult(null);}} style={{background:isQuiz?'#E2735B':'#286c62',color:'#fff',border:0,padding:'7px 10px',borderRadius:5,fontSize:11,cursor:'pointer'}}>{isQuiz?'Open test':'Study lesson'}</button>
+        <button disabled={isQuiz && !allLessonsCompleted} onClick={()=>{setActiveModuleId(m.id);setShowResult(null);}} style={{background:isQuiz?'#E2735B':'#286c62',color:'#fff',border:0,padding:'7px 10px',borderRadius:5,fontSize:11,cursor:isQuiz&&!allLessonsCompleted?'not-allowed':'pointer',opacity:isQuiz&&!allLessonsCompleted?0.45:1}}>{isQuiz?(!allLessonsCompleted?'Complete lessons first':'Open test'):'Study lesson'}</button>
       </div>;
     })}
     {activeModule && activeModule.type!=='quiz' && <section style={{marginTop:14,background:'#fff',border:'1px solid #D9E1DE',borderRadius:9,padding:16}}>
@@ -1526,8 +1484,8 @@ function CourseView({tr, state, update, showToast, close}){
     </section>}
     {activeModule?.type==='quiz' && <div id="quiz-area" style={{marginTop:14,background:'#fff',border:'1px solid #ddd',borderRadius:8,padding:14}}>
       <div style={{fontWeight:700,fontSize:14}}>Final assessment — {tr.title}</div>
-      <div style={{fontSize:11,color:'var(--muted)',marginTop:4,marginBottom:8}}>Pass mark: {passPercent}%. You can review the lessons above before submitting.</div>
-      {showResult ? <div style={{textAlign:'center',padding:16}}><div style={{fontSize:22,fontWeight:700,color:showResult.pass?'#4C8577':'#E2735B'}}>{showResult.pass?'Passed ✓':'Not passed yet'}</div><div style={{fontFamily:'monospace',fontSize:22,marginTop:6}}>{showResult.score}%</div><div style={{fontSize:11,opacity:0.7,marginTop:4}}>{showResult.pass?'Course completed. Your certificate is available in Training → Certificates.':'Review the lessons and try again.'}</div><button onClick={()=>{setShowResult(null);setAnswers({});}} style={{marginTop:10,background:'#201526',color:'#fff',border:0,padding:'8px 12px',borderRadius:6,fontSize:12,cursor:'pointer'}}>Retake test</button></div>:
+      <div style={{fontSize:11,color:'var(--muted)',marginTop:4,marginBottom:8}}>Pass mark: {passPercent}%. Complete every lesson before the assessment unlocks.</div>
+      {!allLessonsCompleted ? <div style={{padding:14,background:'#FFF7E8',border:'1px solid #E8D5A8',borderRadius:7,fontSize:12,color:'#72551C'}}>The final assessment is locked. Complete all {lessons.length} lessons first ({completedModules.filter(id=>lessons.some(item=>item.id===id)).length}/{lessons.length} completed).</div> : !hasValidExam ? <div style={{padding:14,background:'#FFF2F0',border:'1px solid #F0C5BE',borderRadius:7,fontSize:12,color:'#8C3B28'}}>This course does not yet have a valid assessment. Please contact your training administrator.</div> : showResult ? <div style={{textAlign:'center',padding:16}}><div style={{fontSize:22,fontWeight:700,color:showResult.pass?'#4C8577':'#E2735B'}}>{showResult.pass?'Passed ✓':'Not passed yet'}</div><div style={{fontFamily:'monospace',fontSize:22,marginTop:6}}>{showResult.score}%</div><div style={{fontSize:11,opacity:0.7,marginTop:4}}>{showResult.pass?'Course completed. Your certificate is available in Training → Certificates.':'Review the lessons and try again.'}</div><button onClick={()=>{setShowResult(null);setAnswers({});}} style={{marginTop:10,background:'#201526',color:'#fff',border:0,padding:'8px 12px',borderRadius:6,fontSize:12,cursor:'pointer'}}>Retake test</button></div>:
       <div>
         {quizQuestions.map((qq,i)=><div key={qq.id||i} style={{marginTop:10,padding:10,background:'rgba(32,21,38,0.04)',borderRadius:6}}>
           <div style={{fontSize:12,fontWeight:600}}>{i+1}. {qq.q}</div>

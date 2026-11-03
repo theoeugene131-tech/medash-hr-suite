@@ -13,10 +13,13 @@ export default function TrainingAccessPage() {
   const [course, setCourse] = useState(null);
   const [answers, setAnswers] = useState({});
   const [activeLesson, setActiveLesson] = useState(0);
+  const [completedLessonIds, setCompletedLessonIds] = useState([]);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const router = useRouter();
+  const lessons = Array.isArray(course?.modules) ? course.modules.filter((module) => module.type !== "quiz") : [];
+  const allLessonsCompleted = lessons.length > 0 && lessons.every((lesson) => completedLessonIds.includes(lesson.id));
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -26,7 +29,7 @@ export default function TrainingAccessPage() {
 
   async function loadCourse(event) {
     event?.preventDefault();
-    setBusy(true); setError(""); setResult(null); setCourse(null); setAnswers({});
+    setBusy(true); setError(""); setResult(null); setCourse(null); setAnswers({}); setCompletedLessonIds([]); setName(""); setEmail("");
     try {
       const response = await api("/api/training/public/course", { method: "POST", body: { code: code.trim() } });
       setCourse(response.course); setActiveLesson(0);
@@ -34,8 +37,22 @@ export default function TrainingAccessPage() {
     finally { setBusy(false); }
   }
 
+  async function markLessonComplete(lesson) {
+    if (!name.trim() || !email.trim()) { setError("Enter your name and email before marking lessons complete."); return; }
+    if (completedLessonIds.includes(lesson.id)) return;
+    setBusy(true); setError("");
+    try {
+      await api("/api/training/public/lesson-complete", { method: "POST", body: { code: code.trim(), email: email.trim(), lessonId: lesson.id } });
+      setCompletedLessonIds((current) => current.includes(lesson.id) ? current : [...current, lesson.id]);
+      setError("");
+    } catch (e) { setError(e.message || "Could not save lesson progress."); }
+    finally { setBusy(false); }
+  }
+
   async function submit(event) {
-    event.preventDefault(); setBusy(true); setError("");
+    event.preventDefault();
+    if (!allLessonsCompleted) { setError("Complete every lesson before submitting the assessment."); return; }
+    setBusy(true); setError("");
     try {
       const response = await api("/api/training/public/submit", { method: "POST", body: { code: code.trim(), name, email, answers } });
       setResult(response.result);
@@ -57,12 +74,14 @@ export default function TrainingAccessPage() {
         </form>}
         {course && !result && <form onSubmit={submit} style={{ display: "grid", gap: 18 }}>
           <div><h2 style={{ margin: "0 0 6px", fontSize: 24 }}>{course.title}</h2><p style={{ margin: 0, color: "#586574" }}>{course.description}</p><p style={{ fontSize: 13, color: "#586574" }}>Pass mark: {course.passPercent}% · {course.questions.length} questions</p></div>
-          {(() => {
-            const lessons = Array.isArray(course.modules) && course.modules.length
-              ? course.modules.filter((module) => module.type !== "quiz")
-              : (course.materials ? course.materials.split(/(?=MODULE\s+\\d+\s*[—-])/i).filter((part) => part.trim()).map((content, index) => ({ id: "lesson-" + index, title: (content.trim().split("\n")[0] || "Lesson " + (index + 1)).replace(/^MODULE\s+\\d+\s*[—-]?\s*/i, ""), content })) : []);
-            return <section style={{ display: "grid", gap: 12, border: "1px solid #cbd8d4", borderRadius: 10, padding: 14, background: "#f8fbfa" }}>
-              <div><h3 style={{ margin: 0, fontSize: 18 }}>Study your lectures before the assessment</h3><p style={{ margin: "5px 0 0", color: "#586574", fontSize: 13 }}>Open each lesson below. Read the full material, then continue to the next lesson.</p></div>
+          <div style={{ display: "grid", gap: 10, padding: 14, background: "#f8fbfa", border: "1px solid #cbd8d4", borderRadius: 10 }}>
+            <strong style={{ fontSize: 14 }}>Trainee details</strong>
+            <label style={{ fontSize: 13, fontWeight: 700 }}>Your full name<input value={name} onChange={e => setName(e.target.value)} required maxLength={120} style={{ ...field, marginTop: 6 }} /></label>
+            <label style={{ fontSize: 13, fontWeight: 700 }}>Email address<input type="email" value={email} onChange={e => setEmail(e.target.value)} required maxLength={254} style={{ ...field, marginTop: 6 }} /></label>
+            <p style={{ margin: 0, color: "#586574", fontSize: 12 }}>Your email is used to save your lesson completion and exam result.</p>
+          </div>
+          <section style={{ display: "grid", gap: 12, border: "1px solid #cbd8d4", borderRadius: 10, padding: 14, background: "#f8fbfa" }}>
+              <div><h3 style={{ margin: 0, fontSize: 18 }}>Study your lectures before the assessment</h3><p style={{ margin: "5px 0 0", color: "#586574", fontSize: 13 }}>Open each lesson, read it, and mark it complete. The assessment unlocks only after all lessons are completed.</p><p style={{ margin: "6px 0 0", color: "#286c62", fontSize: 12, fontWeight: 700 }}>{completedLessonIds.length} of {lessons.length} lessons completed</p></div>
               {lessons.length > 0 ? <>
                 <div style={{ display: "grid", gap: 7 }}>
                   {lessons.map((lesson, index) => <button type="button" key={lesson.id || index} onClick={() => setActiveLesson(index)} style={{ textAlign: "left", border: activeLesson === index ? "2px solid #286c62" : "1px solid #d7dce2", borderRadius: 8, padding: 11, background: activeLesson === index ? "#eaf3f0" : "#fff", color: "#17212b", cursor: "pointer" }}>
@@ -74,15 +93,15 @@ export default function TrainingAccessPage() {
                   <div style={{ fontSize: 11, color: "#286c62", fontWeight: 700, textTransform: "uppercase" }}>Lecture {activeLesson + 1} of {lessons.length}</div>
                   <h4 style={{ fontSize: 19, margin: "6px 0 12px" }}>{lessons[activeLesson]?.title || "Study lesson"}</h4>
                   <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", lineHeight: 1.75, fontSize: 14 }}>{lessons[activeLesson]?.content || "Your training administrator has not added written material to this lesson yet."}</div>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
                     <button type="button" disabled={activeLesson === 0} onClick={() => setActiveLesson((value) => Math.max(0, value - 1))} style={{ border: "1px solid #d7dce2", borderRadius: 7, padding: "9px 13px", background: "#fff", cursor: activeLesson === 0 ? "not-allowed" : "pointer" }}>Previous lesson</button>
+                    <button type="button" disabled={completedLessonIds.includes(lessons[activeLesson]?.id) || busy} onClick={() => markLessonComplete(lessons[activeLesson])} style={{ border: 0, borderRadius: 7, padding: "9px 13px", background: completedLessonIds.includes(lessons[activeLesson]?.id) ? "#eaf3f0" : "#286c62", color: completedLessonIds.includes(lessons[activeLesson]?.id) ? "#286c62" : "#fff", cursor: "pointer" }}>{completedLessonIds.includes(lessons[activeLesson]?.id) ? "Lesson completed ✓" : busy ? "Saving…" : "Mark lesson complete"}</button>
                     <button type="button" disabled={activeLesson >= lessons.length - 1} onClick={() => setActiveLesson((value) => Math.min(lessons.length - 1, value + 1))} style={{ border: 0, borderRadius: 7, padding: "9px 13px", background: "#286c62", color: "#fff", cursor: activeLesson >= lessons.length - 1 ? "not-allowed" : "pointer" }}>Next lesson →</button>
                   </div>
                 </article>
               </> : <p style={{ margin: 0, color: "#a33" }}>No lecture material has been added to this course yet. Please contact your training administrator.</p>}
-            </section>;
-          })()}
-          <div style={{ display: "grid", gap: 16 }}>
+          </section>
+          {!allLessonsCompleted ? <div style={{ padding: 14, borderRadius: 9, background: "#fff7e8", border: "1px solid #ead7ad", color: "#72551c", fontSize: 13 }}>The final assessment is locked until you complete all {lessons.length} lessons.</div> : <div style={{ display: "grid", gap: 16 }}>
             <h3 style={{ margin: 0, fontSize: 18 }}>Final assessment</h3>
             {course.questions.map((q, i) => <fieldset key={q.id} style={{ margin: 0, border: "1px solid #e0e5e9", borderRadius: 10, padding: 14 }}>
               <legend style={{ padding: "0 5px", fontWeight: 700 }}>{i + 1}. {q.text}</legend>
@@ -90,12 +109,10 @@ export default function TrainingAccessPage() {
                 {q.options.map((option, j) => <label key={j} style={{ display: "flex", gap: 9, alignItems: "flex-start", cursor: "pointer" }}><input type="radio" name={q.id} checked={answers[q.id] === j} onChange={() => setAnswers(old => ({ ...old, [q.id]: j }))} required /> <span>{option}</span></label>)}
               </div>
             </fieldset>)}
-          </div>
-          <div style={{ display: "grid", gap: 10, borderTop: "1px solid #e0e5e9", paddingTop: 16 }}>
-            <label style={{ fontSize: 13, fontWeight: 700 }}>Your full name<input value={name} onChange={e => setName(e.target.value)} required maxLength={120} style={{ ...field, marginTop: 6 }} /></label>
-            <label style={{ fontSize: 13, fontWeight: 700 }}>Email address<input type="email" value={email} onChange={e => setEmail(e.target.value)} required maxLength={254} style={{ ...field, marginTop: 6 }} /></label>
-            <button disabled={busy} style={{ border: 0, borderRadius: 8, background: "#286c62", color: "#fff", padding: 12, fontWeight: 700, cursor: "pointer" }}>{busy ? "Marking exam…" : "Submit exam"}</button>
-          </div>
+          </div>}
+          {allLessonsCompleted && <div style={{ display: "grid", gap: 10, borderTop: "1px solid #e0e5e9", paddingTop: 16 }}>
+            <button disabled={busy || !name.trim() || !email.trim() || !course.questions.length} style={{ border: 0, borderRadius: 8, background: "#286c62", color: "#fff", padding: 12, fontWeight: 700, cursor: "pointer", opacity: busy ? 0.6 : 1 }}>{busy ? "Marking exam…" : "Submit exam"}</button>
+          </div>}
         </form>}
         {result && <div style={{ display: "grid", gap: 12 }}>
           <div style={{ fontSize: 12, textTransform: "uppercase", color: "#586574" }}>Exam result</div>
