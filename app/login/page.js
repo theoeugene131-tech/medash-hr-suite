@@ -286,9 +286,11 @@ export default function Page(){
       if(company){
         setSubscription(company);
         const now=Date.now();
-        const trialExpired=company.subscriptionStatus!=="active" && company.trialEndsAt && new Date(company.trialEndsAt).getTime()<now;
-        const paidExpired=company.subscriptionStatus==="active" && company.subscriptionEndsAt && new Date(company.subscriptionEndsAt).getTime()<now;
-        if(trialExpired || paidExpired) return;
+        const status=company.subscriptionStatus || "legacy";
+        const trialExpired=(status==="trial" || status==="trialing") && (!company.trialEndsAt || new Date(company.trialEndsAt).getTime()<=now);
+        const paidExpired=status==="active" && company.subscriptionEndsAt && new Date(company.subscriptionEndsAt).getTime()<=now;
+        const suspended=!["trial","trialing","active","legacy"].includes(status);
+        if(trialExpired || paidExpired || suspended) return;
       }
       const remoteState=await CompanyStateAPI.get().catch(()=>null);
       const [emps,runs]=await Promise.all([EmployeesAPI.list().catch(()=>null), PayrollAPI.list().catch(()=>null)]);
@@ -421,9 +423,11 @@ export default function Page(){
       </div>
     );
   }
+  const subscriptionStatus = subscription?.subscriptionStatus || "legacy";
   const trialExpired = !!(subscription && (
-    (subscription.subscriptionStatus !== "active" && subscription.trialEndsAt && new Date(subscription.trialEndsAt).getTime() < Date.now()) ||
-    (subscription.subscriptionStatus === "active" && subscription.subscriptionEndsAt && new Date(subscription.subscriptionEndsAt).getTime() < Date.now())
+    ((subscriptionStatus === "trial" || subscriptionStatus === "trialing") && (!subscription.trialEndsAt || new Date(subscription.trialEndsAt).getTime() <= Date.now())) ||
+    (subscriptionStatus === "active" && subscription.subscriptionEndsAt && new Date(subscription.subscriptionEndsAt).getTime() <= Date.now()) ||
+    !["trial", "trialing", "active", "legacy"].includes(subscriptionStatus)
   ));
   if (trialExpired) {
     return <div style={{minHeight:"100vh",background:"#241623",color:"#EDEEF2",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
