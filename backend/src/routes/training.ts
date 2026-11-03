@@ -142,6 +142,43 @@ publicTrainingRouter.post("/submit", async (req, res) => {
 
 trainingRouter.use(requireAuth);
 
+trainingRouter.post("/lesson-complete", async (req: AuthedRequest, res) => {
+  const parsed = z.object({
+    trainingId: z.string().min(1).max(200),
+    moduleId: z.string().min(1).max(200),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Select a valid course lesson." });
+  if (req.auth!.role !== "employee" || !req.auth!.employeeId) {
+    return res.status(403).json({ error: "Only the enrolled employee can record their lesson completion." });
+  }
+  try {
+    const record = await db.findForCompany("companyState", req.auth!.companyId, req.auth!.companyId);
+    const state = record?.state as Record<string, any> | undefined;
+    const training = Array.isArray(state?.trainings) ? state!.trainings.find((item: any) => item.id === parsed.data.trainingId) : null;
+    const lesson = Array.isArray(training?.modules) ? training.modules.find((item: any) => item.id === parsed.data.moduleId && item.type !== "quiz") : null;
+    if (!training || !lesson) return res.status(404).json({ error: "This lesson is not part of the selected course." });
+    const employee = await db.findForCompany("employees", req.auth!.employeeId, req.auth!.companyId);
+    if (!employee) return res.status(403).json({ error: "Your employee account could not be verified." });
+    const enrollments = Array.isArray(state!.enrollments) ? [...state!.enrollments] : [];
+    let enrollment = enrollments.find((item: any) => item.employeeId === employee.id && item.trainingId === training.id);
+    if (!enrollment) {
+      enrollment = { id: "enrollment-" + randomBytes(10).toString("hex"), employeeId: employee.id, trainingId: training.id, progress: 0, completedModules: [], enrolledAt: new Date().toISOString().slice(0, 10), completedAt: null, score: null, certificateId: null };
+      enrollments.push(enrollment);
+    }
+    const completed = new Set(Array.isArray(enrollment.completedModules) ? enrollment.completedModules : []);
+    completed.add(lesson.id);
+    enrollment.completedModules = [...completed];
+    const lessonModules = training.modules.filter((item: any) => item.type !== "quiz");
+    enrollment.progress = Math.round(100 * lessonModules.filter((item: any) => completed.has(item.id)).length / Math.max(1, lessonModules.length));
+    state!.enrollments = enrollments;
+    await db.updateForCompany("companyState", req.auth!.companyId, req.auth!.companyId, { state, updatedAt: new Date().toISOString() });
+    return res.json({ completed: true, progress: enrollment.progress });
+  } catch (error) {
+    console.error("Training lesson completion failed:", error);
+    return res.status(500).json({ error: "Could not save lesson completion. Please try again." });
+  }
+});
+
 const GENERATED_COURSE_PROMPT = `You are a senior corporate instructional designer creating professional training for a mixed international workforce. Return only valid JSON with this shape:
 {"title":"string","description":"two-sentence description","materials":"string","passPercent":70,"attemptsPerRound":3,"questions":[{"text":"scenario-based question","options":["A","B","C","D"],"correctIndex":0}]}
 Create 8 to 10 substantial lessons, each introduced by a heading exactly like "MODULE 1 — LESSON TITLE". Each lesson must contain at least 130 words and include: learning objective; clear explanation of the concept; step-by-step workplace practice; a realistic workplace example or scenario; common mistakes or risks; and a short learner activity or reflection. Use plain, professional English and practical detail, not slogans or repeated filler. Build a coherent progression from foundations to application and review. Avoid legal conclusions: explain that local law and company policy vary, and identify jurisdiction-specific requirements only when confident. Do not invent statutes, deadlines, penalties, or official guidance.
@@ -271,6 +308,12 @@ trainingRouter.post("/submit", async (req: AuthedRequest, res) => {
       if (!employeeId) return res.status(403).json({ error: "Your employee account could not be verified." });
       const employee = await db.findForCompany("employees", employeeId, req.auth!.companyId);
       if (!employee) return res.status(403).json({ error: "Your employee account could not be verified." });
+      const lessonModules = Array.isArray(training.modules) ? training.modules.filter((module: any) => module.type !== "quiz") : [];
+      const enrollment = (Array.isArray(state!.enrollments) ? state!.enrollments : []).find((item: any) => item.employeeId === employeeId && item.trainingId === training.id);
+      const completed = new Set(Array.isArray(enrollment?.completedModules) ? enrollment.completedModules : []);
+      if (!lessonModules.length || lessonModules.some((module: any) => !completed.has(module.id))) {
+        return res.status(403).json({ error: "Complete every course lesson before submitting the final assessment." });
+      }
     }
     const questions = training.questions as Array<{ id?: string; text: string; options: string[]; correctIndex: number }>;
     const allowedKeys = new Set(questions.map((question, index) => question.id || String(index)));
@@ -296,7 +339,7 @@ trainingRouter.post("/submit", async (req: AuthedRequest, res) => {
       enrollment.lastScore = percent;
       enrollment.score = percent;
       if (passed) {
-        const moduleIds = Array.isArray(training.modules) ? training.modules.map((module: any) => module.id).filter(Boolean) : [];
+        const moduleIds = Array.isArray(training.modules) ? training.modules.filter((module: any) => module.type !== "quiz").map((module: any) => module.id).filter(Boolean) : [];
         enrollment.completedModules = [...new Set([...(Array.isArray(enrollment.completedModules) ? enrollment.completedModules : []), ...moduleIds])];
         enrollment.progress = 100;
         enrollment.completedAt = enrollment.completedAt || new Date().toISOString().slice(0, 10);
