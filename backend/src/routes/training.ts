@@ -12,6 +12,26 @@ function cleanAccessCode(value: unknown) {
   return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 24);
 }
 
+async function companySubscriptionAllowsTraining(companyId: string) {
+  const company = await db.find("companies", companyId);
+  if (!company) return false;
+  const status = company.subscriptionStatus || "legacy";
+  const now = Date.now();
+  if (status === "active") {
+    const end = company.subscriptionEndsAt ? new Date(company.subscriptionEndsAt).getTime() : null;
+    return end === null || end > now;
+  }
+  if (status === "trial" || status === "trialing") {
+    const end = company.trialEndsAt ? new Date(company.trialEndsAt).getTime() : null;
+    return end !== null && end > now;
+  }
+  return status === "legacy";
+}
+
+function subscriptionRequired(res: any) {
+  return res.status(402).json({ error: "This company's Medash trial has ended or its subscription is not active. Ask the company administrator to renew access.", subscriptionRequired: true });
+}
+
 function getCourseLessons(course: any) {
   const source = Array.isArray(course?.modules) ? course.modules.filter((module: any) => module.type !== "quiz") : [];
   const candidates = source.length ? source : (typeof course?.materials === "string" ? [{ id: "materials", title: "Study material", content: course.materials, duration: "Self-paced" }] : []);
@@ -42,6 +62,7 @@ publicTrainingRouter.post("/course", async (req, res) => {
   try {
     const access = await db.findByField("trainingAccessCodes", "code", code);
     if (!access || access.revokedAt) return res.status(404).json({ error: "This access code is invalid or has been disabled." });
+    if (!(await companySubscriptionAllowsTraining(access.companyId))) return subscriptionRequired(res);
     const record = await db.findForCompany("companyState", access.companyId, access.companyId);
     const state = record?.state as Record<string, any> | undefined;
     const course = Array.isArray(state?.trainings) ? state!.trainings.find((item: any) => item.id === access.trainingId) : null;
@@ -67,6 +88,7 @@ publicTrainingRouter.post("/lesson-complete", async (req, res) => {
   try {
     const access = await db.findByField("trainingAccessCodes", "code", code);
     if (!access || access.revokedAt) return res.status(404).json({ error: "This access code is invalid or has been disabled." });
+    if (!(await companySubscriptionAllowsTraining(access.companyId))) return subscriptionRequired(res);
     const record = await db.findForCompany("companyState", access.companyId, access.companyId);
     const state = record?.state as Record<string, any> | undefined;
     const course = Array.isArray(state?.trainings) ? state!.trainings.find((item: any) => item.id === access.trainingId) : null;
@@ -104,6 +126,7 @@ publicTrainingRouter.post("/submit", async (req, res) => {
   try {
     const access = await db.findByField("trainingAccessCodes", "code", code);
     if (!access || access.revokedAt) return res.status(404).json({ error: "This access code is invalid or has been disabled." });
+    if (!(await companySubscriptionAllowsTraining(access.companyId))) return subscriptionRequired(res);
     const record = await db.findForCompany("companyState", access.companyId, access.companyId);
     const state = record?.state as Record<string, any> | undefined;
     const course = Array.isArray(state?.trainings) ? state!.trainings.find((item: any) => item.id === access.trainingId) : null;
