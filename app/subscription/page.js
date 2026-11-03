@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, getSessionUser, getToken, clearSession } from "@/lib/api";
+import { api, getSessionUser, getToken } from "@/lib/api";
 
 const inputStyle = { width: "100%", boxSizing: "border-box", padding: 12, border: "1px solid #d8dce3", borderRadius: 8, background: "#fff", color: "#201526", marginTop: 6 };
 
