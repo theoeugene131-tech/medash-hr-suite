@@ -21,14 +21,15 @@ async function companySubscriptionAllowsTraining(companyId: string) {
     const end = company.subscriptionEndsAt ? new Date(company.subscriptionEndsAt).getTime() : null;
     return end === null || end > now;
   }
-  if (status === "trial" || status === "trialing") {
+  if (status === "trial" || status === "trialing" || status === "legacy") {
     const storedEnd = company.trialEndsAt ? new Date(company.trialEndsAt).getTime() : null;
-    const started = company.trialStartedAt ? new Date(company.trialStartedAt).getTime() : null;
+    const startValue = company.trialStartedAt || (status === "legacy" ? company.createdAt : null);
+    const started = startValue ? new Date(startValue).getTime() : null;
     const sevenDayEnd = started !== null ? started + 7 * 24 * 60 * 60 * 1000 : null;
     const end = storedEnd !== null && sevenDayEnd !== null ? Math.min(storedEnd, sevenDayEnd) : (sevenDayEnd ?? storedEnd);
     return end !== null && end > now;
   }
-  return status === "legacy";
+  return false;
 }
 
 function subscriptionRequired(res: any) {
