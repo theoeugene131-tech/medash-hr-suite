@@ -120,7 +120,20 @@ export default function TrainingAccessPage() {
           <div style={{ fontSize: 36, fontWeight: 800 }}>{result.percent}%</div>
           <p style={{ margin: 0 }}>Score: {result.score} of {result.total}. Required pass mark: {result.passPercent}%.</p>
           <p style={{ margin: 0, color: "#586574" }}>Course: {result.courseTitle} · Attempt {result.attempt}</p>
-          <button onClick={() => { setCourse(null); setResult(null); setAnswers({}); setName(""); setEmail(""); }} style={{ border: "1px solid #d7dce2", borderRadius: 8, background: "#fff", padding: 11, cursor: "pointer" }}>Return to access code</button>
+          {result.certificate && <div id="medash-certificate" style={{ marginTop: 10, padding: 28, border: "5px double #286c62", borderRadius: 8, background: "#fff", textAlign: "center", color: "#17212b" }}>
+            <div style={{ fontSize: 12, letterSpacing: 3, fontWeight: 700, color: "#286c62" }}>MEDASH HR SUITE · CERTIFICATE OF COMPLETION</div>
+            <h2 style={{ fontFamily: "Georgia, serif", fontSize: 30, margin: "24px 0 10px" }}>Certificate of Achievement</h2>
+            <p style={{ color: "#586574", margin: "8px 0" }}>This certifies that</p>
+            <div style={{ fontFamily: "Georgia, serif", fontSize: 27, fontWeight: 700, margin: "10px 0" }}>{result.certificate.traineeName}</div>
+            <p style={{ color: "#586574", margin: "8px 0" }}>has successfully completed the training course</p>
+            <div style={{ fontSize: 20, fontWeight: 700, margin: "12px 0" }}>{result.certificate.courseTitle}</div>
+            <p style={{ margin: "8px 0" }}>Assessment score: {result.certificate.score}%</p>
+            <p style={{ margin: "8px 0", fontSize: 13, color: "#586574" }}>Date issued: {result.certificate.issuedAt}</p>
+            <p style={{ margin: "8px 0", fontSize: 11, color: "#586574" }}>Certificate ID: {result.certificate.id}</p>
+          </div>}
+          {result.certificate && <button className="certificate-actions" onClick={() => window.print()} style={{ border: 0, borderRadius: 8, background: "#286c62", color: "#fff", padding: 12, fontWeight: 700, cursor: "pointer" }}>Print / Save certificate as PDF</button>}
+          <button className="certificate-actions" onClick={() => { setCourse(null); setResult(null); setAnswers({}); setName(""); setEmail(""); }} style={{ border: "1px solid #d7dce2", borderRadius: 8, background: "#fff", padding: 11, cursor: "pointer" }}>Return to access code</button>
+          <style>{`@media print { body * { visibility: hidden !important; } #medash-certificate, #medash-certificate * { visibility: visible !important; } #medash-certificate { position: absolute; left: 0; top: 0; width: 100%; box-sizing: border-box; } .certificate-actions { display: none !important; } }`}</style>
         </div>}
         {error && <p role="alert" style={{ color: "#b42318", background: "#fff2f0", borderRadius: 7, padding: 10, marginBottom: 0 }}>{error}</p>}
       </section>
