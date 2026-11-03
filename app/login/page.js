@@ -1409,7 +1409,12 @@ function CourseView({tr, state, update, showToast, close}){
   const lessons=modules.filter(m=>m.type!=='quiz');
   const allLessonsCompleted=lessons.length>0 && lessons.every(m=>completedModules.includes(m.id));
   const hasValidExam=quizQuestions.length>0 && quizQuestions.every(q=>q.q && Array.isArray(q.a) && q.a.length===4 && Number.isInteger(q.correct) && q.correct>=0 && q.correct<4);
-  function markLessonComplete(module){
+  async function markLessonComplete(module){
+    if(state.currentRole==='employee' && getApiBase() && getToken()){
+      try{
+        await api('/api/training/lesson-complete',{method:'POST',body:{trainingId:tr.id,moduleId:module.id}});
+      }catch(err){ showToast('Lesson progress could not be saved: '+err.message); return; }
+    }
     update(s=>{
       let record=s.enrollments.find(e=>e.employeeId===myId && e.trainingId===tr.id);
       if(!record){
