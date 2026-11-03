@@ -314,6 +314,11 @@ trainingRouter.post("/submit", async (req: AuthedRequest, res) => {
       if (!lessonModules.length || lessonModules.some((module: any) => !completed.has(module.id))) {
         return res.status(403).json({ error: "Complete every course lesson before submitting the final assessment." });
       }
+      const attemptsUsed = Number(enrollment?.attempts) || 0;
+      const maxAttempts = Number.isInteger(training.attemptsPerRound) && training.attemptsPerRound > 0 ? training.attemptsPerRound : 3;
+      if (attemptsUsed >= maxAttempts) {
+        return res.status(403).json({ error: `You have used all ${maxAttempts} exam attempts for this course. Contact HR if you need another attempt.` });
+      }
     }
     const questions = training.questions as Array<{ id?: string; text: string; options: string[]; correctIndex: number }>;
     const allowedKeys = new Set(questions.map((question, index) => question.id || String(index)));
