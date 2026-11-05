@@ -3,7 +3,7 @@ import { z } from "zod";
 import { nanoid } from "nanoid";
 import crypto from "crypto";
 import { db } from "../lib/db.js";
-import { hashPassword, verifyPassword, signToken } from "../lib/auth.js";
+import { hashPassword, verifyPassword, signToken, verifyToken } from "../lib/auth.js";
 import { requireAuth, requireAdmin, AuthedRequest } from "../middleware/requireAuth.js";
 
 export const authRouter = Router();
@@ -32,7 +32,7 @@ authRouter.post("/signup", async (req, res) => {
 
   const companyId = nanoid();
   const trialStartedAt = new Date();
-  const trialEndsAt = new Date(trialStartedAt.getTime() + 14 * 24 * 60 * 60 * 1000);
+  const trialEndsAt = new Date(trialStartedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
   await db.insert("companies", { id: companyId, name: companyName.trim(), countryCode, ...region, subscriptionStatus: "trial", trialStartedAt: trialStartedAt.toISOString(), trialEndsAt: trialEndsAt.toISOString(), createdAt: trialStartedAt.toISOString() });
 
   const user = {
@@ -71,6 +71,36 @@ authRouter.post("/login", async (req, res) => {
     employeeId: user.employeeId ?? null,
   });
   res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+});
+
+// A signed-in company can submit a manual payment reference even after its trial expires.
+authRouter.post("/payment-request", async (req, res) => {
+  const parsed = z.object({
+    plan: z.literal("monthly"),
+    paymentReference: z.string().trim().min(3).max(120),
+    payerName: z.string().trim().min(2).max(120).optional(),
+    note: z.string().trim().max(500).optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Choose a plan and enter a valid payment reference." });
+  const header = req.headers.authorization;
+  if (!header?.startsWith("Bearer ")) return res.status(401).json({ error: "Please sign in to submit a payment reference." });
+  const payload = verifyToken(header.slice("Bearer ".length));
+  if (!payload) return res.status(401).json({ error: "Your session has expired. Please sign in again." });
+  const user = await db.find("users", payload.userId);
+  if (!user || user.active === false || user.disabled === true || user.companyId !== payload.companyId || user.role !== payload.role || !["owner", "admin"].includes(user.role)) {
+    return res.status(401).json({ error: "Your account is no longer active. Please sign in again." });
+  }
+  const company = await db.find("companies", user.companyId);
+  if (!company) return res.status(404).json({ error: "Company account could not be found." });
+  const requests = (await db.table("subscriptionPaymentRequests", user.companyId)) as any[];
+  if (requests.some((item) => item.status === "pending")) return res.status(409).json({ error: "Your company already has a payment request awaiting review." });
+  const request = {
+    id: nanoid(), companyId: user.companyId, userId: user.id, plan: parsed.data.plan,
+    paymentReference: parsed.data.paymentReference, payerName: parsed.data.payerName || user.name || "",
+    note: parsed.data.note || "", status: "pending", createdAt: new Date().toISOString(),
+  };
+  await db.insert("subscriptionPaymentRequests", request);
+  return res.status(201).json({ ok: true, request: { id: request.id, status: request.status, createdAt: request.createdAt } });
 });
 
 // Admin generates a one-time invite link for a specific employee to set

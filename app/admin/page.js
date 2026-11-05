@@ -11,6 +11,7 @@ function dateLabel(value) {
 export default function PlatformAdminPage() {
   const [secret, setSecret] = useState("");
   const [companies, setCompanies] = useState([]);
+  const [paymentRequests, setPaymentRequests] = useState([]);
   const [plan, setPlan] = useState("monthly");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -35,9 +36,13 @@ export default function PlatformAdminPage() {
     setBusy(true);
     setMessage("");
     try {
-      const data = await request("/api/admin/companies");
+      const [data, requests] = await Promise.all([
+        request("/api/admin/companies"),
+        request("/api/admin/subscription-payment-requests"),
+      ]);
       setCompanies(Array.isArray(data) ? data : []);
-      setMessage("Company list loaded.");
+      setPaymentRequests(Array.isArray(requests) ? requests : []);
+      setMessage("Company list and pending payment requests loaded.");
     } catch (error) {
       setMessage(error.message || "Could not load companies.");
     } finally {
@@ -55,6 +60,41 @@ export default function PlatformAdminPage() {
       await loadCompanies();
     } catch (error) {
       setMessage(error.message || "Could not activate subscription.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function approvePayment(requestItem) {
+    if (!window.confirm("Have you independently confirmed payment reference " + requestItem.paymentReference + " for " + requestItem.companyName + "? This will activate the subscription.")) return;
+    setBusy(true); setMessage("");
+    try {
+      await request("/api/admin/subscriptions/activate", "POST", {
+        companyId: requestItem.companyId,
+        paymentRequestId: requestItem.id,
+        plan: requestItem.plan,
+      });
+      setMessage("Payment approved and " + requestItem.companyName + " activated.");
+      await loadCompanies();
+    } catch (error) {
+      setMessage(error.message || "Could not approve payment.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function rejectPayment(requestItem) {
+    const reason = window.prompt("Reason for rejecting this payment reference (optional):", "");
+    if (reason === null) return;
+    setBusy(true); setMessage("");
+    try {
+      await request("/api/admin/subscriptions/reject-payment", "POST", {
+        paymentRequestId: requestItem.id, reason,
+      });
+      setMessage("Payment request rejected for " + requestItem.companyName + ".");
+      await loadCompanies();
+    } catch (error) {
+      setMessage(error.message || "Could not reject payment request.");
     } finally {
       setBusy(false);
     }
@@ -83,6 +123,30 @@ export default function PlatformAdminPage() {
         </form>
 
         {message && <p role="status" style={{ margin: "16px 0", padding: 12, borderRadius: 8, background: "#2E1D2D", color: "#EDEEF2", lineHeight: 1.6 }}>{message}</p>}
+
+        <section style={{ marginTop: 24 }}>
+          <h2 style={{ fontSize: 20, marginBottom: 8 }}>Pending payment verification</h2>
+          <p style={{ color: "#B39FB0", fontSize: 12, lineHeight: 1.6 }}>Check each payment in your bank or payment provider before approving it here. Approval immediately activates the selected company.</p>
+          <div style={{ overflowX: "auto", border: "1px solid #4A3447", borderRadius: 12 }}>
+            <table style={{ width: "100%", minWidth: 760, borderCollapse: "collapse", background: "#2E1D2D", fontSize: 13 }}>
+              <thead><tr style={{ textAlign: "left", background: "#3A2739" }}>
+                {["Company", "Owner email", "Term", "Payment reference", "Payer", "Submitted", "Action"].map((heading) => <th key={heading} style={{ padding: 12 }}>{heading}</th>)}
+              </tr></thead>
+              <tbody>
+                {paymentRequests.map((item) => <tr key={item.id}>
+                  <td style={{ padding: 12, borderTop: "1px solid #4A3447" }}>{item.companyName}</td>
+                  <td style={{ padding: 12, borderTop: "1px solid #4A3447" }}>{item.ownerEmail || "—"}</td>
+                  <td style={{ padding: 12, borderTop: "1px solid #4A3447" }}>{item.plan}</td>
+                  <td style={{ padding: 12, borderTop: "1px solid #4A3447", wordBreak: "break-all" }}>{item.paymentReference}</td>
+                  <td style={{ padding: 12, borderTop: "1px solid #4A3447" }}>{item.payerName || "—"}</td>
+                  <td style={{ padding: 12, borderTop: "1px solid #4A3447" }}>{dateLabel(item.createdAt)}</td>
+                  <td style={{ padding: 12, borderTop: "1px solid #4A3447" }}><div style={{ display: "flex", gap: 6 }}><button type="button" disabled={busy} onClick={() => approvePayment(item)} style={{ padding: "8px 10px", border: 0, borderRadius: 6, background: "#4C8577", color: "#fff", cursor: busy ? "wait" : "pointer", whiteSpace: "nowrap" }}>Verify & activate</button><button type="button" disabled={busy} onClick={() => rejectPayment(item)} style={{ padding: "8px 10px", border: "1px solid #9b5b5b", borderRadius: 6, background: "transparent", color: "#f2b5b5", cursor: busy ? "wait" : "pointer" }}>Reject</button></div></td>
+                </tr>)}
+                {paymentRequests.length === 0 && <tr><td colSpan={7} style={{ padding: 18, color: "#B39FB0", textAlign: "center" }}>No pending payment requests.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </section>
 
         <div style={{ marginTop: 22, overflowX: "auto", border: "1px solid #4A3447", borderRadius: 12 }}>
           <table style={{ width: "100%", minWidth: 800, borderCollapse: "collapse", background: "#2E1D2D", fontSize: 13 }}>

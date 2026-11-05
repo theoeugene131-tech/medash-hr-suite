@@ -5,7 +5,7 @@ import { normalizeKey, isValidFormat, getStoredKey, saveLicense, clearLicense } 
 import { getApiBase, setApiBaseOverride, getToken, setSession, getSessionUser, clearSession, AuthAPI, EmployeesAPI, PayrollAPI, CompanyAPI, CompanyStateAPI, api } from "@/lib/api";
 import CountrySettings from "@/components/CountrySettings";
 import TrainingCourseBuilder from "@/components/TrainingCourseBuilder";
-import { formatMoney, formatDate, getCurrencySymbol, getCountryOptions } from "@/lib/region";
+import { formatMoney, formatDate, getCurrencySymbol, getCountryOptions, regionForCountry } from "@/lib/region";
 import { libraryTemplates } from "@/lib/training-starter-courses";
 
 const AVATAR_COLORS = ['#E2735B','#C9A227','#4C8577','#7D6BA6','#B3563F','#3E7C8A'];
@@ -273,8 +273,13 @@ export default function Page(){
   function cloudOff(){
     try{
       const params=new URLSearchParams(window.location.search);
+      const hostedDeployment=!['localhost','127.0.0.1','::1'].includes(window.location.hostname);
+      // On hosted deployments, only the clearly labelled sample-data demo may
+      // run without a company login. Customers cannot switch the live app offline
+      // to bypass the server-side subscription gate.
+      if(hostedDeployment) return params.get('demo')==='1' && params.get('local')==='1' && params.get('freshDemo')==='1';
       return params.get('local')==='1' || localStorage.getItem(CLOUD_OFF_KEY)==='1';
-    }catch{ return true; }
+    }catch{ return false; }
   }
   const cloudSyncEnabled=!!(getApiBase() && !cloudOff() && apiUser && getToken());
   async function hydrateCloud(){
@@ -286,9 +291,11 @@ export default function Page(){
       if(company){
         setSubscription(company);
         const now=Date.now();
-        const trialExpired=company.subscriptionStatus!=="active" && company.trialEndsAt && new Date(company.trialEndsAt).getTime()<now;
-        const paidExpired=company.subscriptionStatus==="active" && company.subscriptionEndsAt && new Date(company.subscriptionEndsAt).getTime()<now;
-        if(trialExpired || paidExpired) return;
+        const status=company.subscriptionStatus || "legacy";
+        const trialExpired=(status==="trial" || status==="trialing") && (!company.trialEndsAt || new Date(company.trialEndsAt).getTime()<=now);
+        const paidExpired=status==="active" && company.subscriptionEndsAt && new Date(company.subscriptionEndsAt).getTime()<=now;
+        const suspended=!["trial","trialing","active","legacy"].includes(status);
+        if(trialExpired || paidExpired || suspended) return;
       }
       const remoteState=await CompanyStateAPI.get().catch(()=>null);
       const [emps,runs]=await Promise.all([EmployeesAPI.list().catch(()=>null), PayrollAPI.list().catch(()=>null)]);
@@ -421,16 +428,18 @@ export default function Page(){
       </div>
     );
   }
+  const subscriptionStatus = subscription?.subscriptionStatus || "legacy";
   const trialExpired = !!(subscription && (
-    (subscription.subscriptionStatus !== "active" && subscription.trialEndsAt && new Date(subscription.trialEndsAt).getTime() < Date.now()) ||
-    (subscription.subscriptionStatus === "active" && subscription.subscriptionEndsAt && new Date(subscription.subscriptionEndsAt).getTime() < Date.now())
+    ((subscriptionStatus === "trial" || subscriptionStatus === "trialing") && (!subscription.trialEndsAt || new Date(subscription.trialEndsAt).getTime() <= Date.now())) ||
+    (subscriptionStatus === "active" && subscription.subscriptionEndsAt && new Date(subscription.subscriptionEndsAt).getTime() <= Date.now()) ||
+    !["trial", "trialing", "active", "legacy"].includes(subscriptionStatus)
   ));
   if (trialExpired) {
     return <div style={{minHeight:"100vh",background:"#241623",color:"#EDEEF2",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <div style={{maxWidth:520,width:"100%",background:"#EDEEF2",color:"#201526",borderRadius:12,padding:32}}>
-        <h1 style={{fontFamily:"Newsreader,serif",fontSize:28,marginTop:0}}>{subscription?.subscriptionStatus==="active" ? "Your Medash subscription has expired" : "Your Medash trial has ended"}</h1>
-        <p style={{fontSize:14,lineHeight:1.7}}>Your company’s access is paused. Contact Medash to arrange manual subscription activation. Your company data has not been deleted.</p>
-        <a href="https://wa.me/2348026892077?text=Hello%2C%20please%20help%20me%20activate%20my%20Medash%20HR%20Suite%20subscription." target="_blank" rel="noreferrer" style={{display:"inline-block",background:"#E2735B",color:"#fff",padding:"12px 16px",borderRadius:7,textDecoration:"none",fontWeight:600}}>Contact Medash support</a>
+        <h1 style={{fontFamily:"Newsreader,serif",fontSize:28,marginTop:0}}>{subscriptionStatus==="active" ? "Your Medash subscription has expired" : subscriptionStatus==="suspended" ? "Your Medash subscription is suspended" : "Your Medash trial has ended"}</h1>
+        <p style={{fontSize:14,lineHeight:1.7}}>Your company’s access is paused. Submit your payment reference for manual verification. Your company data has not been deleted.</p>
+        <a href="/subscription" style={{display:"inline-block",background:"#E2735B",color:"#fff",padding:"12px 16px",borderRadius:7,textDecoration:"none",fontWeight:600}}>Submit payment for verification</a>
         <button onClick={()=>{clearSession();setApiUser(null);setSubscription(null);}} style={{display:"block",marginTop:14,background:"transparent",border:"1px solid rgba(32,21,38,.2)",padding:"10px 14px",borderRadius:7,cursor:"pointer"}}>Log out</button>
       </div>
     </div>;
@@ -442,6 +451,23 @@ export default function Page(){
   const currentGroup=NAV_GROUPS.find(group=>group.tabs.includes(activeTabs))||NAV_GROUPS[0];
   if(activeTabs!==currentTab) setCurrentTab(activeTabs);
   function update(fn){ setState(s=>{ const ns=JSON.parse(JSON.stringify(s)); fn(ns); return ns; }); }
+  async function changeJurisdiction(nextCode){
+    if(!nextCode || nextCode===state.countryCode) return;
+    const next=regionForCountry(nextCode);
+    if(cloudMode && !['owner','admin'].includes(apiUser?.role)){
+      showToast('Only the company owner or HR admin can change the jurisdiction.');
+      return;
+    }
+    try{
+      if(cloudMode) await CompanyAPI.updateRegion(nextCode,next.currency);
+      const saved=loadState()||{};
+      saveState({...saved,countryCode:nextCode,currency:next.currency,locale:next.locale,timezone:next.timezone});
+      update(s=>{s.countryCode=nextCode;s.currency=next.currency;s.locale=next.locale;s.timezone=next.timezone;});
+      showToast('Company jurisdiction saved: '+(COUNTRY_LABELS[nextCode]||next.label||nextCode));
+    }catch(error){
+      showToast(error.message||'Could not save the company jurisdiction.');
+    }
+  }
   function showToast(m){ setToast(m); setTimeout(()=>setToast(null),2800); }
   const period=nextPeriod(state.runs);
   const activeEmployees=state.employees.filter(e=>e.active);
@@ -494,7 +520,12 @@ export default function Page(){
             <div style={{display:'flex',alignItems:'center',gap:8}}>
               <h1 style={{fontFamily:'Newsreader, serif', fontSize:22, fontWeight:600, fontStyle:'italic'}}>Medash HR Suite</h1>
               <span style={{fontSize:10,background:'rgba(237,238,242,0.08)',border:'1px solid var(--line)',padding:'2px 6px',borderRadius:20,color:'var(--muted)'}}>{state.companyName || '—'}</span>
-              <span aria-label="Active jurisdiction" title="Active jurisdiction for regional settings" style={{fontSize:11,background:'rgba(226,115,91,0.16)',border:'1px solid rgba(226,115,91,0.65)',padding:'5px 9px',borderRadius:20,color:'var(--paper)',fontWeight:700,whiteSpace:'nowrap'}}>🌍 Jurisdiction: {COUNTRY_LABELS[state.countryCode] || state.countryCode || 'Not set'}</span>
+              <label title="Choose the company's operating jurisdiction" style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:11,background:'rgba(226,115,91,0.16)',border:'1px solid rgba(226,115,91,0.65)',padding:'4px 7px',borderRadius:20,color:'var(--paper)',fontWeight:700,whiteSpace:'nowrap'}}>
+                🌍 Jurisdiction
+                <select aria-label="Company jurisdiction" value={state.countryCode||'NG'} disabled={cloudMode && !['owner','admin'].includes(apiUser?.role)} onChange={e=>changeJurisdiction(e.target.value)} style={{maxWidth:145,background:'transparent',color:'var(--paper)',border:0,fontSize:11,fontWeight:700,outline:'none',cursor:'pointer'}}>
+                  {getCountryOptions().map(country=><option key={country.countryCode} value={country.countryCode} style={{color:'#201526'}}>{country.countryCode==='GB'?'Europe/UK':country.label}</option>)}
+                </select>
+              </label>
             </div>
             <p style={{fontSize:11.5, color:'var(--muted)', marginTop:2}}>Payroll, compliance & HR for teams of 5–20</p>
             <div style={{marginTop:8,display:'flex',gap:6,alignItems:'center'}}>
@@ -1524,9 +1555,10 @@ function AuthScreen({authForm,setAuthForm,onAuth,showToast}){
         <div style={{display:'flex',gap:8,marginBottom:16}}>
           {['login','signup'].map(m=><button key={m} onClick={()=>setAuthForm({...f,mode:m})} style={{flex:1,padding:'9px 0',borderRadius:6,border:'1px solid rgba(32,21,38,0.2)',background:f.mode===m?'#201526':'transparent',color:f.mode===m?'#fff':'#201526',fontSize:13,fontWeight:600,cursor:'pointer',textTransform:'capitalize'}}>{m==='login'?'Log in':'New company'}</button>)}
         </div>
+        {f.mode==='signup' && <p style={{fontSize:12,color:'#4C8577',margin:'-6px 0 14px',fontWeight:700}}>New companies receive a 7-day free trial of HR, Payroll and Training.</p>}
         <form onSubmit={submit}>
           {f.mode==='signup' && <><div className="field"><label>Company name</label><input value={f.companyName} onChange={e=>setAuthForm({...f,companyName:e.target.value})} placeholder="e.g. GreenField Ltd"/></div>
-          <div className="field"><label>Company country</label><select value={f.countryCode||"NG"} onChange={e=>setAuthForm({...f,countryCode:e.target.value})}>{getCountryOptions().map(country=><option key={country.countryCode} value={country.countryCode}>{country.countryCode==="GB"?"Europe/UK":country.label}</option>)}</select></div>
+          <div className="field"><label>Company jurisdiction (where your company operates)</label><select value={f.countryCode||"NG"} onChange={e=>setAuthForm({...f,countryCode:e.target.value})}>{getCountryOptions().map(country=><option key={country.countryCode} value={country.countryCode}>{country.countryCode==="GB"?"Europe/UK":country.label}</option>)}</select></div>
           <div className="field"><label>Your name</label><input value={f.name} onChange={e=>setAuthForm({...f,name:e.target.value})} placeholder="e.g. Ada Obi"/></div></>}
           <div className="field"><label>Email</label><input value={f.email} onChange={e=>setAuthForm({...f,email:e.target.value})} placeholder="you@company.com"/></div>
           <div className="field"><label>Password (8+ chars)</label><input type="password" value={f.password} onChange={e=>setAuthForm({...f,password:e.target.value})}/></div>

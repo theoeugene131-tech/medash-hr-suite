@@ -40,14 +40,24 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
 
     const company = await db.find("companies", user.companyId);
     if (!company) return res.status(403).json({ error: "Company account could not be found." });
-    const isCompanyStatusRead = req.method === "GET" && req.path === "/";
+    const isCompanyStatusRead = req.method === "GET" && req.originalUrl.split("?")[0] === "/api/company";
     const now = Date.now();
-    const trialEndsAt = company.trialEndsAt ? new Date(company.trialEndsAt).getTime() : null;
+    const status = company.subscriptionStatus || "legacy";
+    const storedTrialEnd = company.trialEndsAt ? new Date(company.trialEndsAt).getTime() : null;
+    const trialStartValue = company.trialStartedAt || (status === "legacy" ? company.createdAt : null);
+    const trialStart = trialStartValue ? new Date(trialStartValue).getTime() : null;
+    const sevenDayTrialEnd = trialStart !== null && Number.isFinite(trialStart) ? trialStart + 7 * 24 * 60 * 60 * 1000 : null;
+    const trialEndsAt = storedTrialEnd !== null && sevenDayTrialEnd !== null
+      ? Math.min(storedTrialEnd, sevenDayTrialEnd)
+      : (sevenDayTrialEnd ?? storedTrialEnd);
     const subscriptionEndsAt = company.subscriptionEndsAt ? new Date(company.subscriptionEndsAt).getTime() : null;
-    const trialExpired = company.subscriptionStatus !== "active" && trialEndsAt !== null && trialEndsAt < now;
-    const paidSubscriptionExpired = company.subscriptionStatus === "active" && subscriptionEndsAt !== null && subscriptionEndsAt < now;
-    if (!isCompanyStatusRead && (trialExpired || paidSubscriptionExpired)) {
-      return res.status(402).json({ error: trialExpired ? "Your 14-day Medash trial has ended. Contact Medash support to arrange manual subscription activation." : "Your Medash subscription has expired. Contact Medash support to renew access." });
+    const trialAccess = (status === "trial" || status === "trialing" || status === "legacy") && trialEndsAt !== null && trialEndsAt > now;
+    const paidAccess = status === "active" && (subscriptionEndsAt === null || subscriptionEndsAt > now);
+    if (!isCompanyStatusRead && !trialAccess && !paidAccess) {
+      const message = status === "trial" || status === "trialing"
+        ? "Your 7-day Medash trial has ended. Submit your payment reference for manual verification to restore access."
+        : "Your Medash subscription has expired or is suspended. Submit your payment reference for manual verification to restore access.";
+      return res.status(402).json({ error: message, subscriptionRequired: true });
     }
     return next();
   } catch (error) {
