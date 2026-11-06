@@ -116,7 +116,7 @@ export default function PlatformAdminPage() {
             Activation term
             <select value={plan} onChange={(event) => setPlan(event.target.value)} style={{ display: "block", padding: 12, marginTop: 8, borderRadius: 7, border: "1px solid #735A70", background: "#241623", color: "#fff" }}>
               <option value="monthly">Monthly · 30 days</option>
-              <option value="annual">Annual · 365 days</option>
+              
             </select>
           </label>
           <button type="submit" disabled={busy} style={{ padding: "12px 18px", border: 0, borderRadius: 7, background: "#E2735B", color: "#fff", fontWeight: 700, cursor: busy ? "wait" : "pointer" }}>{busy ? "Please wait…" : "Load companies"}</button>
