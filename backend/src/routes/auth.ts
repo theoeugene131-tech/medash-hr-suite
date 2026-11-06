@@ -31,9 +31,8 @@ authRouter.post("/signup", async (req, res) => {
   if (existing) return res.status(409).json({ error: "An account with that email already exists" });
 
   const companyId = nanoid();
-  const trialStartedAt = new Date();
-  const trialEndsAt = new Date(trialStartedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
-  await db.insert("companies", { id: companyId, name: companyName.trim(), countryCode, ...region, subscriptionStatus: "trial", trialStartedAt: trialStartedAt.toISOString(), trialEndsAt: trialEndsAt.toISOString(), createdAt: trialStartedAt.toISOString() });
+  const createdAt = new Date().toISOString();
+  await db.insert("companies", { id: companyId, name: companyName.trim(), countryCode, ...region, subscriptionStatus: "pending_payment", createdAt });
 
   const user = {
     id: nanoid(),
@@ -73,7 +72,7 @@ authRouter.post("/login", async (req, res) => {
   res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
 });
 
-// A signed-in company can submit a manual payment reference even after its trial expires.
+// A signed-in company can submit a manual payment reference before subscription activation.
 authRouter.post("/payment-request", async (req, res) => {
   const parsed = z.object({
     plan: z.literal("monthly"),
