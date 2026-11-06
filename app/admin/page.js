@@ -105,7 +105,7 @@ export default function PlatformAdminPage() {
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
         <p style={{ color: "#E2735B", fontSize: 12, letterSpacing: 2, textTransform: "uppercase" }}>Restricted access</p>
         <h1 style={{ fontFamily: "Georgia, serif", fontSize: 36, margin: "8px 0" }}>Medash platform admin</h1>
-        <p style={{ color: "#D4C6D1", lineHeight: 1.7, maxWidth: 760 }}>Review company signups and trial status, and activate a subscription after you have independently confirmed payment. Keep the admin secret private; do not paste it into customer support messages or share it with customers.</p>
+        <p style={{ color: "#D4C6D1", lineHeight: 1.7, maxWidth: 760 }}>Review company signups and payment status, and activate a subscription after you have independently confirmed payment. Keep the admin secret private; do not paste it into customer support messages or share it with customers.</p>
 
         <form onSubmit={loadCompanies} style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "end", background: "#2E1D2D", border: "1px solid #4A3447", borderRadius: 12, padding: 18, marginTop: 24 }}>
           <label style={{ flex: "1 1 300px", fontSize: 13 }}>
@@ -152,7 +152,7 @@ export default function PlatformAdminPage() {
           <table style={{ width: "100%", minWidth: 800, borderCollapse: "collapse", background: "#2E1D2D", fontSize: 13 }}>
             <thead>
               <tr style={{ textAlign: "left", background: "#3A2739" }}>
-                {["Company", "Owner email", "Country", "Signed up", "Status", "Trial ends", "Paid until", "Action"].map((heading) => <th key={heading} style={{ padding: 13, borderBottom: "1px solid #4A3447" }}>{heading}</th>)}
+                {["Company", "Owner email", "Country", "Signed up", "Status", "Paid until", "Action"].map((heading) => <th key={heading} style={{ padding: 13, borderBottom: "1px solid #4A3447" }}>{heading}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -163,12 +163,11 @@ export default function PlatformAdminPage() {
                   <td style={{ padding: 13, borderBottom: "1px solid #4A3447" }}>{({ NG: "Nigeria", GB: "UK", US: "US" })[company.countryCode] || company.countryCode}</td>
                   <td style={{ padding: 13, borderBottom: "1px solid #4A3447" }}>{dateLabel(company.createdAt)}</td>
                   <td style={{ padding: 13, borderBottom: "1px solid #4A3447" }}>{company.subscriptionStatus || "unknown"}{company.subscriptionPlan ? " · " + company.subscriptionPlan : ""}</td>
-                  <td style={{ padding: 13, borderBottom: "1px solid #4A3447" }}>{dateLabel(company.trialEndsAt)}</td>
-                  <td style={{ padding: 13, borderBottom: "1px solid #4A3447" }}>{dateLabel(company.subscriptionEndsAt)}</td>
+                                    <td style={{ padding: 13, borderBottom: "1px solid #4A3447" }}>{dateLabel(company.subscriptionEndsAt)}</td>
                   <td style={{ padding: 13, borderBottom: "1px solid #4A3447" }}><button type="button" disabled={busy} onClick={() => activate(company)} style={{ padding: "8px 10px", border: 0, borderRadius: 6, background: "#E2735B", color: "#fff", cursor: busy ? "wait" : "pointer", whiteSpace: "nowrap" }}>Activate {plan}</button></td>
                 </tr>
               ))}
-              {companies.length === 0 && <tr><td colSpan={8} style={{ padding: 20, color: "#B39FB0", textAlign: "center" }}>No company list loaded yet. Enter your secret above and choose “Load companies”.</td></tr>}
+              {companies.length === 0 && <tr><td colSpan={7} style={{ padding: 20, color: "#B39FB0", textAlign: "center" }}>No company list loaded yet. Enter your secret above and choose “Load companies”.</td></tr>}
             </tbody>
           </table>
         </div>
