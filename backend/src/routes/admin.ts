@@ -20,15 +20,7 @@ adminRouter.get("/companies", requirePlatformAdmin, async (_req, res) => {
   const [companies, users] = await Promise.all([db.table("companies"), db.table("users")]);
   const result = companies.map((company: any) => {
     const owner = users.find((user: any) => user.companyId === company.id && user.role === "owner");
-    const rawStatus = company.subscriptionStatus || "legacy";
-    const trialStartedAt = company.trialStartedAt || (rawStatus === "legacy" ? company.createdAt : null);
-    const storedTrialEnd = company.trialEndsAt ? new Date(company.trialEndsAt).getTime() : null;
-    const trialStartMs = trialStartedAt ? new Date(trialStartedAt).getTime() : null;
-    const sevenDayTrialEnd = trialStartMs !== null && Number.isFinite(trialStartMs) ? trialStartMs + 7 * 24 * 60 * 60 * 1000 : null;
-    const effectiveTrialEnd = storedTrialEnd !== null && sevenDayTrialEnd !== null ? Math.min(storedTrialEnd, sevenDayTrialEnd) : (sevenDayTrialEnd ?? storedTrialEnd);
-    const subscriptionStatus = rawStatus === "legacy"
-      ? (effectiveTrialEnd !== null && effectiveTrialEnd > Date.now() ? "trial" : "expired")
-      : rawStatus;
+    const subscriptionStatus = company.subscriptionStatus || "pending_payment";
     return {
       id: company.id,
       name: company.name,
@@ -36,8 +28,6 @@ adminRouter.get("/companies", requirePlatformAdmin, async (_req, res) => {
       createdAt: company.createdAt || null,
       ownerEmail: owner?.email || null,
       subscriptionStatus,
-      trialStartedAt: trialStartedAt || null,
-      trialEndsAt: effectiveTrialEnd !== null && Number.isFinite(effectiveTrialEnd) ? new Date(effectiveTrialEnd).toISOString() : null,
       subscriptionPlan: company.subscriptionPlan || null,
       subscriptionActivatedAt: company.subscriptionActivatedAt || null,
       subscriptionEndsAt: company.subscriptionEndsAt || null,

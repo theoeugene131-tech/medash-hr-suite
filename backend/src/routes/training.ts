@@ -21,19 +21,11 @@ async function companySubscriptionAllowsTraining(companyId: string) {
     const end = company.subscriptionEndsAt ? new Date(company.subscriptionEndsAt).getTime() : null;
     return end === null || end > now;
   }
-  if (status === "trial" || status === "trialing" || status === "legacy") {
-    const storedEnd = company.trialEndsAt ? new Date(company.trialEndsAt).getTime() : null;
-    const startValue = company.trialStartedAt || (status === "legacy" ? company.createdAt : null);
-    const started = startValue ? new Date(startValue).getTime() : null;
-    const sevenDayEnd = started !== null ? started + 7 * 24 * 60 * 60 * 1000 : null;
-    const end = storedEnd !== null && sevenDayEnd !== null ? Math.min(storedEnd, sevenDayEnd) : (sevenDayEnd ?? storedEnd);
-    return end !== null && end > now;
-  }
   return false;
 }
 
 function subscriptionRequired(res: any) {
-  return res.status(402).json({ error: "This company's Medash trial has ended or its subscription is not active. Ask the company administrator to renew access.", subscriptionRequired: true });
+  return res.status(402).json({ error: "A paid Medash subscription is required to access this training. Ask the company administrator to activate the subscription.", subscriptionRequired: true });
 }
 
 function getCourseLessons(course: any) {

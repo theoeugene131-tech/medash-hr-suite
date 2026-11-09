@@ -291,11 +291,10 @@ export default function Page(){
       if(company){
         setSubscription(company);
         const now=Date.now();
-        const status=company.subscriptionStatus || "legacy";
-        const trialExpired=(status==="trial" || status==="trialing") && (!company.trialEndsAt || new Date(company.trialEndsAt).getTime()<=now);
+        const status=company.subscriptionStatus || "pending_payment";
         const paidExpired=status==="active" && company.subscriptionEndsAt && new Date(company.subscriptionEndsAt).getTime()<=now;
-        const suspended=!["trial","trialing","active","legacy"].includes(status);
-        if(trialExpired || paidExpired || suspended) return;
+        const unpaid=status!=="active";
+        if(paidExpired || unpaid) return;
       }
       const remoteState=await CompanyStateAPI.get().catch(()=>null);
       const [emps,runs]=await Promise.all([EmployeesAPI.list().catch(()=>null), PayrollAPI.list().catch(()=>null)]);
@@ -412,7 +411,7 @@ export default function Page(){
         <div style={{maxWidth:520, width:'100%', background:'#EDEEF2', color:'#201526', borderRadius:12, padding:32, boxShadow:'0 20px 60px rgba(0,0,0,0.4)'}}>
           <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:12}}><div style={{width:36,height:36,borderRadius:'50% 50% 50% 6px',background:'#E2735B'}}/><div><div style={{fontFamily:'Newsreader, serif',fontStyle:'italic',fontWeight:700,fontSize:22}}>Medash HR Suite</div><div style={{fontSize:12,opacity:0.6}}>Payroll, HR & Compliance — SaaS License</div></div></div>
           <h2 style={{fontFamily:'Newsreader, serif',fontSize:18,marginBottom:8}}>Enter your license key</h2>
-          <p style={{fontSize:13,opacity:0.7,lineHeight:1.5}}>You purchased on <b>Selar</b>. Paste the key from your delivery email. Keys look like <code style={{background:'#fff',padding:'2px 6px',borderRadius:4}}>MEDASH-XXXX-XXXX-XXXX</code>. Need help? <a href="https://wa.me/2348026892077" target="_blank" rel="noreferrer" style={{color:'#4C8577',fontWeight:600}}>WhatsApp +234 802 689 2077</a></p>
+          <p style={{fontSize:13,opacity:0.7,lineHeight:1.5}}>You purchased on <b>Selar</b>. Paste the key from your delivery email. Keys look like <code style={{background:'#fff',padding:'2px 6px',borderRadius:4}}>MEDASH-XXXX-XXXX-XXXX</code>. Need help? <a href="https://wa.me/2349026892077" target="_blank" rel="noreferrer" style={{color:'#4C8577',fontWeight:600}}>WhatsApp +234 902 689 2077</a></p>
           <form onSubmit={handleLicenseSubmit} style={{marginTop:16}}>
             <input value={licenseKey} onChange={ev=>setLicenseKey(ev.target.value)} placeholder="MEDASH-XXXX-XXXX-XXXX" style={{width:'100%',padding:'12px 14px',borderRadius:8,border:'1px solid rgba(32,21,38,0.2)',fontFamily:'IBM Plex Mono',fontSize:14,background:'#fff'}}/>
             <button type="submit" className="btn btn-primary" style={{width:'100%',marginTop:12,padding:12}}>Activate license</button>
@@ -428,16 +427,12 @@ export default function Page(){
       </div>
     );
   }
-  const subscriptionStatus = subscription?.subscriptionStatus || "legacy";
-  const trialExpired = !!(subscription && (
-    ((subscriptionStatus === "trial" || subscriptionStatus === "trialing") && (!subscription.trialEndsAt || new Date(subscription.trialEndsAt).getTime() <= Date.now())) ||
-    (subscriptionStatus === "active" && subscription.subscriptionEndsAt && new Date(subscription.subscriptionEndsAt).getTime() <= Date.now()) ||
-    !["trial", "trialing", "active", "legacy"].includes(subscriptionStatus)
-  ));
+  const subscriptionStatus = subscription?.subscriptionStatus || "pending_payment";
+  const trialExpired = !!(subscription && (subscriptionStatus !== "active" || (subscription.subscriptionEndsAt && new Date(subscription.subscriptionEndsAt).getTime() <= Date.now())));
   if (trialExpired) {
     return <div style={{minHeight:"100vh",background:"#241623",color:"#EDEEF2",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <div style={{maxWidth:520,width:"100%",background:"#EDEEF2",color:"#201526",borderRadius:12,padding:32}}>
-        <h1 style={{fontFamily:"Newsreader,serif",fontSize:28,marginTop:0}}>{subscriptionStatus==="active" ? "Your Medash subscription has expired" : subscriptionStatus==="suspended" ? "Your Medash subscription is suspended" : "Your Medash trial has ended"}</h1>
+        <h1 style={{fontFamily:"Newsreader,serif",fontSize:28,marginTop:0}}>{subscriptionStatus==="active" ? "Your Medash subscription has expired" : subscriptionStatus==="suspended" ? "Your Medash subscription is suspended" : "A paid subscription is required"}</h1>
         <p style={{fontSize:14,lineHeight:1.7}}>Your company’s access is paused. Submit your payment reference for manual verification. Your company data has not been deleted.</p>
         <a href="/subscription" style={{display:"inline-block",background:"#E2735B",color:"#fff",padding:"12px 16px",borderRadius:7,textDecoration:"none",fontWeight:600}}>Submit payment for verification</a>
         <button onClick={()=>{clearSession();setApiUser(null);setSubscription(null);}} style={{display:"block",marginTop:14,background:"transparent",border:"1px solid rgba(32,21,38,.2)",padding:"10px 14px",borderRadius:7,cursor:"pointer"}}>Log out</button>
@@ -614,7 +609,7 @@ export default function Page(){
         {currentTab==='settings' && <CountrySettings state={state} update={update} showToast={showToast} cloudMode={cloudMode} />}
       </main>
       <footer style={{borderTop:'1px solid var(--line)',padding:'16px 40px',textAlign:'center',fontSize:12,color:'var(--muted)',background:'rgba(0,0,0,0.15)'}}>
-        Developed by <span style={{color:'var(--paper)',fontWeight:600}}>Next Level Global</span> · Contact <a href="https://wa.me/2348026892077" target="_blank" rel="noopener noreferrer" style={{color:'#25D366',textDecoration:'none',fontWeight:600}}>WhatsApp +234 802 689 2077</a> · Medash HR Suite works offline
+        Developed by <span style={{color:'var(--paper)',fontWeight:600}}>Next Level Global</span> · Contact <a href="https://wa.me/2349026892077" target="_blank" rel="noopener noreferrer" style={{color:'#25D366',textDecoration:'none',fontWeight:600}}>WhatsApp +234 902 689 2077</a> · Medash HR Suite works offline
       </footer>
 
       {modal && <Modal modal={modal} setModal={setModal} state={state} update={update} showToast={showToast} />}
@@ -842,7 +837,7 @@ function printSchedule({companyName, period, lines}){
     .hdr{display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #222; padding-bottom:12px}
     @media print{ button{display:none} }
   </style></head><body>
-  <div class="hdr"><div><h1>${companyName || 'Company'}</h1><h2>Monthly Payment Schedule — ${periodLabel(period)} &nbsp;|&nbsp; Generated ${formatDate(new Date())} ${formatDate(new Date(),{hour:'2-digit',minute:'2-digit'})}</h2></div><div style="text-align:right; font-size:11px">Medash HR Suite — Payroll for Small Teams<br/>Developed by Next Level Global · +2348026892077</div></div>
+  <div class="hdr"><div><h1>${companyName || 'Company'}</h1><h2>Monthly Payment Schedule — ${periodLabel(period)} &nbsp;|&nbsp; Generated ${formatDate(new Date())} ${formatDate(new Date(),{hour:'2-digit',minute:'2-digit'})}</h2></div><div style="text-align:right; font-size:11px">Medash HR Suite — Payroll for Small Teams<br/>Developed by Next Level Global · +2349026892077</div></div>
   <table>
     <thead><tr><th>#</th><th>Staff Name</th><th>Role</th><th>Bank</th><th>Account No.</th><th style="text-align:right">Gross</th><th style="text-align:right">PAYE</th><th style="text-align:right">Pension (8%)</th><th style="text-align:right">NHF</th><th style="text-align:right">Net Pay</th><th>Signature</th></tr></thead>
     <tbody>
@@ -1555,7 +1550,7 @@ function AuthScreen({authForm,setAuthForm,onAuth,showToast}){
         <div style={{display:'flex',gap:8,marginBottom:16}}>
           {['login','signup'].map(m=><button key={m} onClick={()=>setAuthForm({...f,mode:m})} style={{flex:1,padding:'9px 0',borderRadius:6,border:'1px solid rgba(32,21,38,0.2)',background:f.mode===m?'#201526':'transparent',color:f.mode===m?'#fff':'#201526',fontSize:13,fontWeight:600,cursor:'pointer',textTransform:'capitalize'}}>{m==='login'?'Log in':'New company'}</button>)}
         </div>
-        {f.mode==='signup' && <p style={{fontSize:12,color:'#4C8577',margin:'-6px 0 14px',fontWeight:700}}>New companies receive a 7-day free trial of HR, Payroll and Training.</p>}
+        {f.mode==='signup' && <p style={{fontSize:12,color:'#4C8577',margin:'-6px 0 14px',fontWeight:700}}>No free trial. Choose a subscription to unlock HR, Payroll and Training. A sample-data demo is available.</p>}
         <form onSubmit={submit}>
           {f.mode==='signup' && <><div className="field"><label>Company name</label><input value={f.companyName} onChange={e=>setAuthForm({...f,companyName:e.target.value})} placeholder="e.g. GreenField Ltd"/></div>
           <div className="field"><label>Company jurisdiction (where your company operates)</label><select value={f.countryCode||"NG"} onChange={e=>setAuthForm({...f,countryCode:e.target.value})}>{getCountryOptions().map(country=><option key={country.countryCode} value={country.countryCode}>{country.countryCode==="GB"?"Europe/UK":country.label}</option>)}</select></div>

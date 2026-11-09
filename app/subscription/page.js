@@ -45,12 +45,12 @@ export default function SubscriptionPage() {
       <section style={{ marginTop: 24, background: "#EDEEF2", color: "#201526", borderRadius: 14, padding: 28 }}>
         <p style={{ color: "#4C8577", fontSize: 12, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase" }}>Company subscription</p>
         <h1 style={{ fontFamily: "Georgia, serif", fontSize: 30, margin: "8px 0" }}>Restore your Medash access</h1>
-        <p style={{ color: "#58616b", lineHeight: 1.7 }}>Your 7-day free trial gives your company full access to HR, Payroll and Training. After the trial, access is paused until payment is verified. Your company records remain saved.</p>
+        <p style={{ color: "#58616b", lineHeight: 1.7 }}>A paid subscription is required for access to HR, Payroll and Training. There is no free trial. Your company records remain saved while access is pending.</p>
         <div style={{ background: "#f3f6f5", border: "1px solid #d4e0dc", padding: 15, borderRadius: 9, margin: "18px 0" }}>
-          <strong>US$30 per company, per month</strong><p style={{ color: "#58616b", margin: "6px 0 0", lineHeight: 1.6 }}>One monthly subscription covers your company access to HR, Payroll and Training. Your 7-day trial is free.</p>
+          <strong>US$30 per company, per month</strong><p style={{ color: "#58616b", margin: "6px 0 0", lineHeight: 1.6 }}>One monthly subscription covers your company access to HR, Payroll and Training. Demo access remains available separately.</p>
           <ol style={{ color: "#58616b", lineHeight: 1.8, paddingLeft: 20, marginBottom: 0 }}>
             <li>Pay US$30 for one month of company access.</li>
-            <li>Contact Medash through the public website for the current payment instructions.</li>
+            <li>Contact Medash Admin on WhatsApp for payment instructions: <a href="https://wa.me/2349026892077" target="_blank" rel="noreferrer">+234 902 689 2077</a>.</li>
             <li>Enter your payment reference below.</li>
             <li>Medash checks the payment and activates your company access.</li>
           </ol>
